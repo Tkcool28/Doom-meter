@@ -187,3 +187,28 @@ a{ color:inherit; text-decoration:none; }
   pointer-events: auto;
   touch-action: manipulation;
 }
+/* Ensure the sheet is above the backdrop (your class names) */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+}
+
+.modal__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0,0,0,.65);
+  z-index: 0;              /* behind */
+}
+
+.modal__sheet {
+  position: relative;
+  z-index: 1;              /* above backdrop */
+  pointer-events: auto;
+}
+
+.modal__sheet a,
+.modal__sheet button {
+  pointer-events: auto;
+  touch-action: manipulation;
+}
