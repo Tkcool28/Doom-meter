@@ -1,251 +1,401 @@
-/* Doom-meter — app.js
-   - Pulls headlines via GDELT DOC 2.1 API (JSONP) so it works on GitHub Pages
-   - Computes a silly "Doom Index" and shows drivers + stories
-   - Modal is mobile-safe: taps inside modal won't close it, and link is clickable
+/* Doom-meter app.js
+   - Pulls recent headlines from GDELT DOC 2.1 (via JSONP)
+   - Classifies titles into doom buckets
+   - Shows a modal with a satire line + a button to open the original article
 */
 
-(() => {
-  // ----------------------------
-  // Config
-  // ----------------------------
-  const GDELT_BASE = "https://api.gdeltproject.org/api/v2/doc/doc";
+const GDELT_BASE = "https://api.gdeltproject.org/api/v2/doc/doc";
 
-  // Queries used to fetch “drivers”
-  // (Keep/adjust to taste.)
-  const DRIVERS = [
-    "war OR conflict OR invasion OR strike OR bombing",
-    "climate OR wildfire OR flood OR hurricane OR drought",
-    "inflation OR recession OR layoffs OR crisis",
-    "election OR vote OR democracy OR authoritarian OR coup",
-    "hack OR cyberattack OR ransomware OR breach",
-    "nuclear OR uranium OR missile OR reactor",
-    "asteroid OR meteor OR comet OR space debris",
-    "chaos OR unrest OR riot OR collapse OR scandal",
-  ];
+const DRIVERS = [
+  // Conflict / war
+  "war OR conflict OR attack OR missile OR drone OR invasion OR bombing OR ceasefire OR militants OR troops OR strikes",
+  // Climate / environment
+  "climate OR wildfire OR hurricane OR flood OR drought OR heatwave OR earthquake OR storm OR emissions OR ice OR famine",
+  // Economy / markets
+  "inflation OR recession OR layoffs OR bank OR debt OR market crash OR unemployment OR default OR housing OR oil prices",
+  // Democracy / politics
+  "election OR coup OR corruption OR protest OR authoritarian OR democracy OR court ruling OR vote fraud OR gerrymander",
+  // Cyber / tech chaos
+  "cyberattack OR hack OR ransomware OR breach OR outage OR data leak OR spyware OR malware",
+  // Nuclear
+  "nuclear OR uranium OR reactor OR enrichment OR IAEA OR atomic",
+  // Space rocks
+  "asteroid OR meteor OR comet OR near-Earth object OR NEO OR impact",
+  // Misc chaos
+  "shooting OR explosion OR hostage OR riot OR scandal OR disaster OR emergency",
+];
 
-  // ----------------------------
-  // DOM
-  // ----------------------------
-  const els = {
-    doomValue: document.getElementById("doomValue"),
-    doomLabel: document.getElementById("doomLabel"),
-    meterFill: document.getElementById("meterFill"),
-    updatedAt: document.getElementById("updatedAt"),
+const els = {
+  doomValue: document.getElementById("doomValue"),
+  doomLabel: document.getElementById("doomLabel"),
+  meterFill: document.getElementById("meterFill"),
+  updatedAt: document.getElementById("updatedAt"),
 
-    breakdownList: document.getElementById("breakdownList"),
-    driversList: document.getElementById("driversList"),
-    storiesList: document.getElementById("storiesList"),
+  breakdownList: document.getElementById("breakdownList"),
+  driversList: document.getElementById("driversList"),
+  storiesList: document.getElementById("storiesList"),
 
-    refreshBtn: document.getElementById("refreshBtn"),
+  refreshBtn: document.getElementById("refreshBtn"),
 
-    modal: document.getElementById("modal"),
-    modalBackdrop: document.getElementById("modalBackdrop"),
-    closeModal: document.getElementById("closeModal"),
-    modalTitle: document.getElementById("modalTitle"),
-    modalSatire: document.getElementById("modalSatire"),
-    modalLink: document.getElementById("modalLink"),
-  };
+  modal: document.getElementById("modal"),
+  modalTitle: document.getElementById("modalTitle"),
+  modalSatire: document.getElementById("modalSatire"),
+  modalLink: document.getElementById("modalLink"), // optional if you kept it
+  closeModal: document.getElementById("closeModal"),
+  modalBackdrop: document.getElementById("modalBackdrop"),
 
-  // If any key elements are missing, fail loudly (helps debugging)
-  const requiredIds = [
-    "doomValue",
-    "doomLabel",
-    "meterFill",
-    "updatedAt",
-    "breakdownList",
-    "driversList",
-    "storiesList",
-    "refreshBtn",
-    "modal",
-    "modalBackdrop",
-    "closeModal",
-    "modalTitle",
-    "modalSatire",
-    "modalLink",
-  ];
-  for (const id of requiredIds) {
-    if (!document.getElementById(id)) {
-      console.warn(`[doom-meter] Missing element #${id}. Check index.html.`);
-    }
+  openOriginalBtn: document.getElementById("openOriginalBtn"), // if you add this button in index.html
+};
+
+// ---------- helpers ----------
+function clamp(n, min, max) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function normalizeTitle(t) {
+  return String(t || "")
+    .toLowerCase()
+    .replace(/&amp;/g, "&")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+}
+
+function safeURL(u) {
+  try {
+    if (!u) return "";
+    const url = new URL(u);
+    return url.toString();
+  } catch {
+    return "";
   }
+}
 
-  // ----------------------------
-  // Helpers
-  // ----------------------------
-  const clamp = (n, lo, hi) => Math.max(lo, Math.min(hi, n));
+// JSONP fetch (avoids CORS)
+function jsonp(url) {
+  return new Promise((resolve, reject) => {
+    const cb = "cb_" + Math.random().toString(36).slice(2);
+    const script = document.createElement("script");
 
-  function normalizeTitle(t) {
-    return String(t || "")
-      .toLowerCase()
-      .replace(/\s+/g, " ")
-      .replace(/[“”]/g, '"')
-      .replace(/[‘’]/g, "'")
-      .trim();
-  }
+    const u = new URL(url);
+    u.searchParams.set("format", "jsonp");
+    u.searchParams.set("callback", cb);
 
-  // JSONP helper (CORS-safe for GitHub Pages)
-  function jsonp(url) {
-    return new Promise((resolve, reject) => {
-      const cb = `__doom_cb_${Math.random().toString(36).slice(2)}`;
-      const script = document.createElement("script");
+    let done = false;
 
-      const cleanup = () => {
-        try {
-          delete window[cb];
-        } catch (_) {
-          window[cb] = undefined;
-        }
-        if (script && script.parentNode) script.parentNode.removeChild(script);
-      };
-
-      window[cb] = (data) => {
-        cleanup();
-        resolve(data);
-      };
-
-      const u = new URL(url);
-      // Ensure we append params correctly
-      const joiner = u.toString().includes("?") ? "&" : "?";
-      script.src = `${u.toString()}${joiner}format=jsonp&callback=${cb}`;
-
-      script.onerror = () => {
-        cleanup();
-        reject(new Error("JSONP load error"));
-      };
-
-      document.body.appendChild(script);
-    });
-  }
-
-  async function fetchDriver(query, timespan = "6h", maxrecords = 60) {
-    const u = new URL(GDELT_BASE);
-    u.searchParams.set("query", query);
-    u.searchParams.set("mode", "artlist");
-    u.searchParams.set("sort", "datedesc");
-    u.searchParams.set("timespan", timespan);
-    u.searchParams.set("maxrecords", String(maxrecords));
-
-    const data = await jsonp(u.toString());
-    // GDELT sometimes returns empty objects
-    return data && data.articles ? data.articles : [];
-  }
-
-  function dedupe(articles) {
-    const seen = new Set();
-    const out = [];
-    for (const a of articles) {
-      const key = normalizeTitle(a.title);
-      if (!key || seen.has(key)) continue;
-      seen.add(key);
-      out.push(a);
-    }
-    return out;
-  }
-
-  // Classify a title into our breakdown buckets
-  function classify(title) {
-    const t = normalizeTitle(title);
-
-    const has = (re) => re.test(t);
-
-    // Defaults
-    let domains = [];
-    let weight = 1;
-    let breakdown = {
-      conflict_heat: 0,
-      climate_weirdness: 0,
-      economy_panic: 0,
-      democracy_melting: 0,
-      cyber_chaos: 0,
-      nuclear_words: 0,
-      space_rocks: 0,
-      misc_chaos: 0,
+    window[cb] = (data) => {
+      done = true;
+      cleanup();
+      resolve(data);
     };
 
-    // Conflict
-    if (
-      has(/\bwar\b|\bconflict\b|\binvasion\b|\bstrike\b|\bbomb\b|\bmissile\b|\battack\b|\bshelling\b|\bmilitary\b/)
-    ) {
-      breakdown.conflict_heat += 1;
-      domains.push("conflict");
-      weight += 2;
+    function cleanup() {
+      try { delete window[cb]; } catch {}
+      if (script && script.parentNode) script.parentNode.removeChild(script);
     }
 
-    // Climate
-    if (
-      has(/\bclimate\b|\bwildfire\b|\bflood\b|\bhurricane\b|\bdrought\b|\bheatwave\b|\bstorm\b|\btemperature\b/)
-    ) {
-      breakdown.climate_weirdness += 1;
-      domains.push("climate");
-      weight += 1;
-    }
+    script.onerror = () => {
+      if (done) return;
+      cleanup();
+      reject(new Error("JSONP load error"));
+    };
 
-    // Economy
-    if (
-      has(/\binflation\b|\brecession\b|\blayoff\b|\bdebt\b|\bcrisis\b|\bbank\b|\bstocks\b|\bmarket\b|\bdefault\b/)
-    ) {
-      breakdown.economy_panic += 1;
-      domains.push("economy");
-      weight += 1;
-    }
+    script.src = u.toString();
+    document.body.appendChild(script);
 
-    // Democracy / politics
-    if (
-      has(/\belection\b|\bvote\b|\bballot\b|\bdemocracy\b|\bcoup\b|\bauthoritarian\b|\bprotest\b|\bparliament\b/)
-    ) {
-      breakdown.democracy_melting += 1;
-      domains.push("democracy");
-      weight += 1;
-    }
+    // Safety timeout
+    setTimeout(() => {
+      if (done) return;
+      cleanup();
+      reject(new Error("JSONP timeout"));
+    }, 15000);
+  });
+}
 
-    // Cyber
-    if (
-      has(/\bhack\b|\bcyber\b|\bransomware\b|\bbreach\b|\bleak\b|\bmalware\b|\bphishing\b|\bddos\b/)
-    ) {
-      breakdown.cyber_chaos += 1;
-      domains.push("cyber");
-      weight += 1;
-    }
+async function fetchDriver(query, timespan = "6h", maxrecords = 60) {
+  const u = new URL(GDELT_BASE);
+  u.searchParams.set("query", query);
+  u.searchParams.set("mode", "artlist");
+  u.searchParams.set("sort", "datedesc");
+  u.searchParams.set("format", "jsonp"); // jsonp helper also sets this, but harmless
+  u.searchParams.set("format", "jsonp");
+  u.searchParams.set("maxrecords", String(maxrecords));
+  u.searchParams.set("format", "jsonp");
+  u.searchParams.set("format", "jsonp");
 
-    // Nuclear
-    if (
-      has(/\bnuclear\b|\buranium\b|\bplutonium\b|\breactor\b|\barmageddon\b|\bwarhead\b/)
-    ) {
-      breakdown.nuclear_words += 1;
-      domains.push("nuclear");
-      weight += 2;
-    }
+  // GDELT DOC supports timespan like "6h", "1d" etc.
+  u.searchParams.set("timespan", timespan);
 
-    // Space rocks
-    if (has(/\basteroid\b|\bmeteor\b|\bcomet\b|\bspace debris\b|\bnear-?earth\b/)) {
-      breakdown.space_rocks += 1;
-      domains.push("space");
-      weight += 1;
-    }
+  const data = await jsonp(u.toString());
+  return data && data.articles ? data.articles : [];
+}
 
-    // If none matched, it’s miscellaneous chaos
-    const sum =
-      breakdown.conflict_heat +
-      breakdown.climate_weirdness +
-      breakdown.economy_panic +
-      breakdown.democracy_melting +
-      breakdown.cyber_chaos +
-      breakdown.nuclear_words +
-      breakdown.space_rocks;
+function dedupe(articles) {
+  const seen = new Set();
+  const out = [];
+  for (const a of articles) {
+    const key = normalizeTitle(a && a.title);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(a);
+  }
+  return out;
+}
 
-    if (sum === 0) {
-      breakdown.misc_chaos += 1;
-      domains.push("misc");
-      weight += 0; // keep it modest
-    } else {
-      // also add a small misc bump to reflect general "uh-oh"
-      breakdown.misc_chaos += 0;
-    }
+// ---------- classification ----------
+function classify(title) {
+  const t = normalizeTitle(title);
 
-    return { domains, weight, breakdown };
+  const domains = [];
+  let weight = 1;
+
+  // Basic keyword buckets
+  const has = (re) => re.test(t);
+
+  if (has(/\b(nuclear|uranium|reactor|enrichment|iaea|atomic)\b/)) domains.push("nuclear_words");
+  if (has(/\b(asteroid|meteor|comet|neo|near earth|impact)\b/)) domains.push("space_rocks");
+  if (has(/\b(cyberattack|hack|ransomware|breach|outage|data leak|malware|spyware)\b/)) domains.push("cyber_chaos");
+  if (has(/\b(election|coup|corruption|authoritarian|democracy|vote|ballot|protest|court ruling|gerrymander)\b/)) domains.push("democracy_melting");
+  if (has(/\b(inflation|recession|layoffs|unemployment|default|bank|debt|market crash|housing)\b/)) domains.push("economy_panic");
+  if (has(/\b(climate|wildfire|hurricane|flood|drought|heatwave|emissions|storm|earthquake)\b/)) domains.push("climate_weirdness");
+  if (has(/\b(war|conflict|attack|missile|drone|invasion|bombing|ceasefire|troops|strike)\b/)) domains.push("conflict_heat");
+
+  // If nothing matched, call it misc chaos
+  if (domains.length === 0) domains.push("misc_chaos");
+
+  // Weighting: make scary words count more (purely for “doom index” vibes)
+  if (has(/\b(killed|dead|massacre|genocide|chemical weapons|nuclear)\b/)) weight += 4;
+  if (has(/\b(attack|explosion|bomb|missile|war|invasion)\b/)) weight += 3;
+  if (has(/\b(hack|breach|ransomware|outage)\b/)) weight += 2;
+  if (has(/\b(crisis|emergency|collapse|catastrophe)\b/)) weight += 2;
+
+  return { domains, weight };
+}
+
+function satireLine(title) {
+  const t = String(title || "").trim();
+  if (!t) return "In today’s episode of ‘Surely This Won’t Have Consequences’… analysts report elevated levels of ‘uh-oh.’";
+  return `In today’s episode of ‘Surely This Won’t Have Consequences’, ${t}. Analysts report elevated levels of ‘uh-oh.’`;
+}
+
+function labelFor(doomIndex) {
+  if (doomIndex <= 10) return "Vibes: chill-ish.";
+  if (doomIndex <= 25) return "We’re so back.";
+  if (doomIndex <= 45) return "Mildly concerning.";
+  if (doomIndex <= 65) return "Spicy timeline.";
+  if (doomIndex <= 85) return "Respectfully: yikes.";
+  return "Full doom wizard mode.";
+}
+
+// ---------- compute + render ----------
+function compute(articles) {
+  const breakdown = {
+    conflict_heat: 0,
+    climate_weirdness: 0,
+    economy_panic: 0,
+    democracy_melting: 0,
+    cyber_chaos: 0,
+    nuclear_words: 0,
+    space_rocks: 0,
+    misc_chaos: 0,
+  };
+
+  const stories = articles.map((a, idx) => {
+    const title = a.title || "Untitled headline";
+    const url = safeURL(a.url || "");
+    const source = a.domain || a.sourceCountry || "Unknown";
+    const publishedAt = a.seendate || "";
+
+    const { domains, weight } = classify(title);
+    for (const d of domains) breakdown[d] = (breakdown[d] || 0) + weight;
+
+    return {
+      id: `${idx}_${normalizeTitle(title).slice(0, 40)}`,
+      title,
+      url,
+      source,
+      publishedAt,
+      domains,
+      weight,
+      satire: satireLine(title),
+    };
+  });
+
+  // DoomIndex: average weight scaled into 0..100 (pure vibes)
+  const avg = stories.length ? stories.reduce((s, x) => s + (x.weight || 0), 0) / stories.length : 0;
+  const doomIndex = clamp(Math.round(avg * 12), 0, 100);
+
+  // Drivers: highest absolute weights
+  const drivers = [...stories].sort((a, b) => Math.abs(b.weight) - Math.abs(a.weight)).slice(0, 8);
+
+  return { doomIndex, doomLabel: labelFor(doomIndex), breakdown, drivers, stories };
+}
+
+function renderBreakdown(breakdown) {
+  const keys = [
+    ["conflict_heat", "Conflict Heat"],
+    ["climate_weirdness", "Climate Weirdness"],
+    ["economy_panic", "Economic Drama"],
+    ["democracy_melting", "Democracy Melting"],
+    ["cyber_chaos", "Cyber Chaos"],
+    ["nuclear_words", "Nuclear Words"],
+    ["space_rocks", "Space Rocks"],
+    ["misc_chaos", "Misc. Chaos"],
+  ];
+
+  const maxVal = Math.max(1, ...keys.map(([k]) => breakdown[k] || 0));
+  els.breakdownList.innerHTML = "";
+
+  keys.forEach(([k, label]) => {
+    const v = breakdown[k] || 0;
+    const pct = Math.round((v / maxVal) * 100);
+
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const left = document.createElement("div");
+    left.style.flex = "1";
+
+    const name = document.createElement("div");
+    name.className = "row__name";
+    name.textContent = label;
+
+    const bar = document.createElement("div");
+    bar.className = "bar";
+    const fill = document.createElement("div");
+    fill.className = "bar__fill";
+    fill.style.width = `${pct}%`;
+    bar.appendChild(fill);
+
+    left.appendChild(name);
+    left.appendChild(bar);
+
+    const right = document.createElement("div");
+    right.className = "row__value";
+    right.textContent = String(v);
+
+    row.appendChild(left);
+    row.appendChild(right);
+
+    els.breakdownList.appendChild(row);
+  });
+}
+
+function storyCard(story) {
+  const div = document.createElement("div");
+  div.className = "item";
+
+  const title = document.createElement("div");
+  title.className = "item__title";
+  title.textContent = story.title;
+
+  const meta = document.createElement("div");
+  meta.className = "item__meta";
+  meta.textContent = `${story.source || "Unknown"} • weight ${story.weight}`;
+
+  const satire = document.createElement("div");
+  satire.className = "item__satire";
+  satire.textContent = story.satire;
+
+  div.appendChild(title);
+  div.appendChild(meta);
+  div.appendChild(satire);
+
+  div.style.cursor = "pointer";
+  div.addEventListener("click", () => openModal(story));
+
+  return div;
+}
+
+function renderLists({ drivers, stories }) {
+  els.driversList.innerHTML = "";
+  drivers.forEach((s) => els.driversList.appendChild(storyCard(s)));
+
+  els.storiesList.innerHTML = "";
+  stories.slice(0, 40).forEach((s) => els.storiesList.appendChild(storyCard(s)));
+}
+
+// ---------- modal ----------
+let currentStory = null;
+
+function openModal(story) {
+  currentStory = story;
+
+  els.modalTitle.textContent = story.title || "";
+  els.modalSatire.textContent = story.satire || "";
+
+  // If you kept the <a id="modalLink"> in index.html, update it too:
+  if (els.modalLink) {
+    els.modalLink.href = story.url || "#";
   }
 
-  function satireLine(title) {
-    // Short, consistent, PG satire
-    const t = String(title || "Untitled headline").trim();
-    return `In today’s episode of ‘Surely
+  els.modal.classList.remove("hidden");
+}
+
+function closeModal() {
+  els.modal.classList.add("hidden");
+  currentStory = null;
+}
+
+// Make “Open Original Article” always clickable on mobile
+function openOriginal() {
+  const url = currentStory && currentStory.url ? currentStory.url : "";
+  if (!url) {
+    alert("No article URL available for this item.");
+    return;
+  }
+  // Must be called from a user click to avoid popup blockers
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+// ---------- refresh flow ----------
+async function refresh() {
+  els.doomValue.textContent = "--";
+  els.doomLabel.textContent = "Consulting the omens…";
+  els.updatedAt.textContent = "";
+
+  els.driversList.innerHTML = "";
+  els.storiesList.innerHTML = "";
+  els.breakdownList.innerHTML = "";
+
+  try {
+    const pulls = await Promise.all(
+      DRIVERS.map((q) => fetchDriver(q, "6h", 60).catch(() => []))
+    );
+
+    const all = dedupe(pulls.flat()).slice(0, 140);
+    const result = compute(all);
+
+    els.doomValue.textContent = String(result.doomIndex);
+    els.doomLabel.textContent = result.doomLabel;
+    els.meterFill.style.width = `${result.doomIndex}%`;
+    els.updatedAt.textContent = `Updated: ${new Date().toLocaleString()}`;
+
+    renderBreakdown(result.breakdown);
+    renderLists(result);
+  } catch (err) {
+    els.doomValue.textContent = "!!";
+    els.doomLabel.textContent = "Error loading headlines (the universe refused to cooperate).";
+    els.updatedAt.textContent = String(err && err.message ? err.message : err);
+  }
+}
+
+// ---------- wire up ----------
+if (els.refreshBtn) els.refreshBtn.addEventListener("click", refresh);
+if (els.closeModal) els.closeModal.addEventListener("click", closeModal);
+if (els.modalBackdrop) els.modalBackdrop.addEventListener("click", closeModal);
+
+// This is IMPORTANT: modal “Open Original Article” should be a BUTTON with id="openOriginalBtn"
+if (els.openOriginalBtn) els.openOriginalBtn.addEventListener("click", openOriginal);
+
+// If you don’t have that button yet, we can still try to hook the anchor click
+if (els.modalLink) {
+  els.modalLink.addEventListener("click", (e) => {
+    // Allow normal behavior if it’s a real link
+    if (!currentStory || !currentStory.url) {
+      e.preventDefault();
+      alert("No article URL available for this item.");
+    }
+  });
+}
+
+refresh();
