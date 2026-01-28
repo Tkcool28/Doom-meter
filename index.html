@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>Doomroom News</title>
+    <meta name="description" content="A polished satire newsroom that turns real global headlines into a Doom Index." />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+
+  <body>
+    <header class="topbar">
+      <div class="topbar__inner">
+        <div class="brand">
+          <div class="brand__kicker">GLOBAL BRIEFING</div>
+          <div class="brand__title">Doomroom News</div>
+          <div class="brand__sub">Doom Index (Highly Scientific)</div>
+        </div>
+
+        <div class="topbar__actions">
+          <button id="refreshBtn" class="btn btn--primary" type="button">Refresh</button>
+          <a class="btn" href="#about">About</a>
+        </div>
+      </div>
+    </header>
+
+    <main class="wrap">
+      <section class="card hero">
+        <div class="hero__row">
+          <div class="doom">
+            <div class="doom__value" id="doomValue">—</div>
+            <div class="doom__label" id="doomLabel">Loading omens…</div>
+            <div class="meter" aria-label="Doom Index Meter">
+              <div class="meter__fill" id="meterFill" style="width:0%"></div>
+            </div>
+            <div class="meta" id="updatedAt"></div>
+          </div>
+        </div>
+
+        <div class="breakdown">
+          <div class="sectionTitle">DOOM BREAKDOWN</div>
+          <div id="breakdownList" class="breakdown__list"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div>
+          <div class="sectionTitle">TOP DRIVERS</div>
+          <div id="driversList" class="list"></div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div>
+          <div class="sectionTitle">LATEST STORIES</div>
+          <div id="storiesList" class="list"></div>
+        </div>
+      </section>
+
+      <section class="card" id="about">
+        <div class="sectionTitle">SETTINGS &amp; ABOUT</div>
+        <p class="about">
+          This app is satire. It uses real news headlines as inputs and turns them into a comedic “Doom Index.”
+          It is not a forecast, prophecy, or financial advice from the universe.
+        </p>
+        <p class="about subtle">
+          Sources: GDELT (DOC API). Displayed headlines link to original publishers.
+        </p>
+        <footer class="footer">Built with equal parts curiosity and a nervous laugh.</footer>
+      </section>
+    </main>
+
+    <!-- Modal -->
+    <div id="modal" class="modal hidden" role="dialog" aria-modal="true" aria-label="Story details">
+      <div class="modal__sheet" role="document">
+        <div class="modal__header">
+          <div class="modal__title">Story Brief</div>
+          <button id="closeModal" class="btn" type="button">Close</button>
+        </div>
+
+        <div class="modal__body">
+          <div id="modalTitle" class="modal__storyTitle"></div>
+          <div id="modalSatire" class="modal__satire"></div>
+
+          <div class="modal__actions">
+            <a id="modalLink" class="btn btn--primary" href="#" target="_blank" rel="noopener">
+              Open Original Article
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- IMPORTANT: backdrop is INSIDE modal, but behind the sheet -->
+      <div class="modal__backdrop" id="modalBackdrop"></div>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
