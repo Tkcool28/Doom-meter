@@ -1,78 +1,111 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="color-scheme" content="dark" />
-    <meta name="theme-color" content="#0b0f17" />
-    <title>Doomroom News</title>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="dark light" />
+  <title>Doomroom News</title>
 
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
+  <!-- Use your external CSS -->
+  <link rel="stylesheet" href="./styles.css?v=3.1.1" />
+</head>
 
-  <body>
-    <div class="wrap">
-      <header class="top">
-        <div class="brand">
-          <div class="kicker">GLOBAL BRIEFING</div>
-          <h1>Doomroom News</h1>
-          <div class="sub">Doom Index (Highly Scientific)</div>
-        </div>
+<body>
+  <div class="wrap">
+    <div class="sub">GLOBAL BRIEFING</div>
+    <h1>Doomroom News</h1>
+    <div class="sub">Doom Index (Highly Scientific)</div>
 
-        <div class="actions">
-          <button id="refreshBtn" class="btn primary">Refresh</button>
-          <button id="aboutBtn" class="btn">About</button>
-        </div>
-      </header>
-
-      <section class="card hero">
-        <div class="heroGrid">
-          <div class="heroScore">
-            <div id="doomBig" class="doomBig">—</div>
-            <div id="doomLabel" class="doomLabel">Loading…</div>
-
-            <div class="doomTrack">
-              <div id="doomFill" class="doomFill" style="width:0%"></div>
-            </div>
-
-            <div class="metaRow">
-              <div id="statusPill" class="pill">Idle</div>
-              <div id="updatedPill" class="pill muted">Updated: —</div>
-            </div>
-
-            <div class="metaRow">
-              <div id="filterPill" class="pill muted">Filter: English / United States</div>
-              <div id="samplePill" class="pill muted">Sample: — headlines</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section id="errorBox" class="card errorBox" style="display:none">
-        <div class="errTitle">!! Error loading headlines.</div>
-        <div id="errorText" class="muted"></div>
-      </section>
-
-      <section class="card">
-        <div class="sectionTitle">DOOM BREAKDOWN</div>
-        <div id="meters" class="meters"></div>
-      </section>
-
-      <section class="card">
-        <div class="sectionTitle">TOP DRIVERS</div>
-        <div id="drivers" class="drivers"></div>
-      </section>
-
-      <section class="card">
-        <div class="sectionTitle">LATEST STORIES</div>
-        <div id="stories" class="stories"></div>
-      </section>
-
-      <footer class="foot">
-        <div id="version" class="muted"></div>
-      </footer>
+    <div class="row">
+      <button id="refreshBtn">Refresh</button>
+      <button id="aboutBtn">About</button>
+      <span id="statusPill" class="pill">Idle</span>
+      <span id="updatedPill" class="pill">Updated: —</span>
     </div>
 
-    <script src="./app.js"></script>
-  </body>
+    <!-- MAIN CARD -->
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:flex-end; gap:14px;">
+        <div>
+          <div id="doomNumber" class="bigNum">—</div>
+        </div>
+        <div style="text-align:right;">
+          <div id="doomLabel" class="bigLabel">—</div>
+        </div>
+      </div>
+
+      <div class="mainMeter" style="margin-top:10px;">
+        <div id="doomFill" class="fill cGreen" style="width:0%"></div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <span id="calmPill" class="pill">OK</span>
+        <span id="filterPill" class="pill">Filter: English / United States</span>
+        <span id="samplePill" class="pill">Sample: — headlines</span>
+      </div>
+
+      <div class="sectionTitle">DOOM BREAKDOWN</div>
+      <div id="breakdown" class="breakdown"></div>
+
+      <div class="sectionTitle">TOP DRIVERS</div>
+      <div id="drivers"></div>
+    </div>
+
+    <!-- STORIES CARD -->
+    <div class="card">
+      <div class="sectionTitle">LATEST STORIES</div>
+      <div id="stories"></div>
+      <div class="sub" style="margin-top:12px;">v<span id="versionText">—</span></div>
+    </div>
+  </div>
+
+  <!-- ABOUT MODAL -->
+  <div id="aboutOverlay" class="overlay hidden" aria-hidden="true">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+      <div class="modalHeader">
+        <div class="brand">
+          <div class="doomLogo" aria-hidden="true">
+            <div class="eye"></div>
+            <div class="pupil"></div>
+          </div>
+          <div>
+            <div class="brandName">OmniOmen Systems</div>
+            <div class="brandTag">“Enterprise-grade dread, delivered daily.”</div>
+          </div>
+        </div>
+        <button id="aboutCloseBtn" class="iconBtn" aria-label="Close">✕</button>
+      </div>
+
+      <h2 id="aboutTitle" class="modalTitle">About Doomroom</h2>
+
+      <div class="modalBody">
+        <div class="aboutRow">
+          <div class="aboutLabel">Version</div>
+          <div class="aboutValue" id="aboutVersion">—</div>
+        </div>
+
+        <div class="aboutCard">
+          <div class="aboutBig">Take a breath.</div>
+          <div class="aboutSmall">
+            This app is satire. It is not a forecast, prophecy, or financial advice from a haunted spreadsheet.
+            The doom is “highly scientific” in the way vibes are scientific.
+          </div>
+        </div>
+
+        <div class="aboutCard subtle">
+          <div class="aboutSmall">
+            If it spikes: drink water, touch grass, and remember the world is complicated and weird —
+            and it has survived an unbelievable amount of nonsense already.
+          </div>
+        </div>
+      </div>
+
+      <div class="modalFooter">
+        <button id="aboutOkBtn" class="btnPrimary">OK, I’m calm(ish)</button>
+      </div>
+    </div>
+  </div>
+
+  <script defer src="./app.js?v=3.1.1"></script>
+</body>
 </html>
