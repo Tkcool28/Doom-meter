@@ -284,3 +284,50 @@ button.ghost{
   transform: translateZ(0);
   backface-visibility: hidden;
 }
+/* === Purple-band exorcism pack (Android/Chrome) === */
+
+/* 1) Kill tap highlight + touch callout */
+html, body, a, button, .card, .story, .storyCard, .driverCard {
+  -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
+  -webkit-touch-callout: none;
+}
+
+/* 2) Prevent the “active/focus” overlay tint on tap */
+a, a:visited {
+  background: transparent;
+}
+a:active, a:focus {
+  background: transparent !important;
+  outline: none;
+}
+
+/* Keep keyboard accessibility on desktop */
+a:focus-visible {
+  outline: 2px solid rgba(255,255,255,.25);
+  outline-offset: 3px;
+}
+/* === Purple-band exorcism pack (Android/Chrome) === */
+
+/* 1) Kill tap highlight + touch callout */
+html, body, a, button, .card, .story, .storyCard, .driverCard {
+  -webkit-tap-highlight-color: rgba(0,0,0,0) !important;
+  -webkit-touch-callout: none;
+}
+
+/* 2) Prevent the “active/focus” overlay tint on tap */
+a, a:visited {
+  background: transparent;
+}
+a:active, a:focus {
+  background: transparent !important;
+  outline: none;
+}
+
+/* Keep keyboard accessibility on desktop */
+a:focus-visible {
+  outline: 2px solid rgba(255,255,255,.25);
+  outline-offset: 3px;
+}
+
+/* 3) Some Android builds tint selections purple — override it */
+::selection { background: rgba(255,255,255,.12); }
