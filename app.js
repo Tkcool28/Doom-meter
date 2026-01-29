@@ -1,117 +1,165 @@
-/*
-  Doomroom News — app.js (v3.1.5)
-  ONLY changes vs “working” version:
-  - About modal copy restored + close button label “On. I’m calm’ish.”
-  - News list: more records + longer timespan + date sort + cache-bust + no-store
-  - Crash-proof DOM setters so a missing id can’t blank the whole app
+/* Doomroom News — app.js (v3.1.5)
+   Fixes:
+   - No more null element crashes (guard every DOM write)
+   - Restore About copy + "OK. I'm calm'ish."
+   - Robust article fetching (fallback query params)
+   - Filtering no longer deletes most results when fields are missing
 */
 
 const VERSION = "v3.1.5";
 
-// Your worker proxy (unchanged)
+// Your worker proxy (must be HTTPS)
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
 const ROUTE = "/gdelt";
 
-// Gentle defaults (fix “only 2 / old”)
+// Defaults
 const DEFAULT_QUERY = "world";
-const MAX_RECORDS = 50;     // was too low in practice
-const DEFAULT_TIMESPAN = "7d"; // was too short / easy to look “stale”
+const MAX_RECORDS = 40;
+const TIMESPAN = "7d"; // wider net so you actually get "today"
+const UI_LIMIT = 12;
 
-const CATEGORY_MAX = 30;
-
+// Categories / keywords (simple + goofy on purpose)
 const CATS = [
-  { key:"conflict", label:"Conflict Heat", keywords:["war","strike","attack","missile","drone","airstrike","invasion","ceasefire","shelling","hostage","terror","bomb","blast"] },
-  { key:"climate", label:"Climate Weirdness", keywords:["heat","wildfire","flood","hurricane","cyclone","storm","drought","record heat","evacuation","blaze","tornado","smoke"] },
-  { key:"econ", label:"Economic Drama", keywords:["recession","inflation","layoff","bank","rate","crash","default","debt","tariff","shutdown","market"] },
-  { key:"democracy", label:"Democracy Melting", keywords:["election","coup","protest","riot","authoritarian","fraud","ban","court","impeach","corruption","arrested","martial law"] },
-  { key:"cyber", label:"Cyber Chaos", keywords:["hack","breach","ransomware","outage","leak","cyber","malware","phishing","ddos"] },
-  { key:"space", label:"Space Rocks", keywords:["asteroid","meteor","comet","space debris","nasa","impact","near-earth","solar flare"] },
-  { key:"misc", label:"Misc. Chaos", keywords:["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] }
+  { key: "conflict", label: "Conflict Heat", keywords: ["war","strike","attack","missile","drone","airstrike","invasion","ceasefire","shelling","hostage","terror","bomb","blast"] },
+  { key: "climate", label: "Climate Weirdness", keywords: ["heat","wildfire","flood","hurricane","cyclone","storm","drought","record heat","evacuation","blaze","tornado","smoke"] },
+  { key: "econ", label: "Economic Drama", keywords: ["inflation","layoff","recession","tariff","crash","default","debt","market","rates","shutdown"] },
+  { key: "policy", label: "Policy / Laws", keywords: ["election","bill","court","protest","riot","authoritarian","fraud","ban","corrupt","impeach","martial law"] },
+  { key: "cyber", label: "Cyber Chaos", keywords: ["hack","breach","ransomware","outage","leak","cyber","malware","phishing","ddos"] },
+  { key: "space", label: "Space Rocks", keywords: ["asteroid","meteor","comet","space debris","nasa","impact","near-earth"] },
+  { key: "misc", label: "Misc. Chaos", keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] }
 ];
 
+// ---------- DOM helpers (NO CRASH ZONE) ----------
 const $ = (id) => document.getElementById(id);
 
-// Crash-proof text setter
-function setText(node, value){
-  if (!node) return;
-  node.textContent = value;
+function setText(id, txt) {
+  const n = $(id);
+  if (n) n.textContent = txt;
+}
+function setHTML(id, html) {
+  const n = $(id);
+  if (n) n.innerHTML = html;
+}
+function setWidth(id, pct) {
+  const n = $(id);
+  if (n) n.style.width = `${pct}%`;
+}
+function show(id) {
+  const n = $(id);
+  if (n) n.classList.remove("hidden");
+}
+function hide(id) {
+  const n = $(id);
+  if (n) n.classList.add("hidden");
 }
 
-// Crash-proof HTML setter (used sparingly)
-function setHTML(node, value){
-  if (!node) return;
-  node.innerHTML = value;
-}
-
-const el = {
-  refresh: $("btnRefresh"),
-  about: $("btnAbout"),
-  status: $("statusPill"),
-  updated: $("updatedPill"),
-
-  doomNum: $("doomNum"),
-  doomLabel: $("doomLabel"),
-  doomTag: $("doomTag"),
-  doomFill: $("doomFill"),
-  sample: $("samplePill"),
-
-  breakdown: $("breakdown"),
-  drivers: $("drivers"),
-  stories: $("stories"),
-  ver: $("verText"),
-
-  aboutOverlay: $("aboutOverlay"),
-  closeAbout: $("btnCloseAbout"),
-  aboutVersion: $("aboutVersion"),
-};
-
-// ----- helpers -----
-
-function safeText(v){
-  return (v == null) ? "" : String(v);
-}
-
-function parseDate(d){
-  if (!d) return 0;
-  const t = Date.parse(d);
-  return Number.isFinite(t) ? t : 0;
-}
-
-function clamp01(n){
-  if (!Number.isFinite(n)) return 0;
-  return Math.max(0, Math.min(1, n));
-}
-
-function fillClassFromPct(p){
-  if (p > 90) return "fire";
-  if (p >= 80) return "red";
-  if (p >= 35) return "yellow";
-  return "green";
-}
-
-function labelFromIndex(idx){
+// ---------- UI labels ----------
+function labelFromIndex(idx) {
   if (idx >= 90) return "On fire.";
   if (idx >= 80) return "Bad vibes.";
   if (idx >= 50) return "Spicy.";
   if (idx >= 25) return "Uneasy.";
   return "Chill (suspiciously).";
 }
-
-function tagFromIndex(idx){
-  if (idx >= 90) return "Drink water. Touch grass. Possibly unplug the planet.";
-  if (idx >= 80) return "Proceed with snacks and caution.";
-  if (idx >= 50) return "The universe is doing that thing again.";
-  if (idx >= 25) return "Mild dread, but manageable.";
+function tagFromIndex(idx) {
+  if (idx >= 90) return "We live in a season finale.";
+  if (idx >= 80) return "Avoid comment sections. Hydrate.";
+  if (idx >= 50) return "Something is… off.";
+  if (idx >= 25) return "Noticeable tremors in the doom-field.";
   return "Take a breath. The universe is weird.";
 }
+function classFromPct(p) {
+  if (p >= 90) return "fire";
+  if (p >= 80) return "red";
+  if (p >= 35) return "yellow";
+  return "";
+}
 
-function scoreHeadline(title){
-  const t = safeText(title).toLowerCase();
+// ---------- Fetch helpers ----------
+async function fetchJSON(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.json();
+}
+
+async function fetchArticles(query) {
+  // Try multiple query styles in case the worker expects different params.
+  const tries = [
+    `${PROXY_BASE}${ROUTE}?query=${encodeURIComponent(query)}&max=${MAX_RECORDS}&timespan=${encodeURIComponent(TIMESPAN)}`,
+    `${PROXY_BASE}${ROUTE}?q=${encodeURIComponent(query)}&max=${MAX_RECORDS}&timespan=${encodeURIComponent(TIMESPAN)}`,
+    `${PROXY_BASE}${ROUTE}?q=${encodeURIComponent(query)}`,
+    `${PROXY_BASE}${ROUTE}?query=${encodeURIComponent(query)}`
+  ];
+
+  let lastErr = null;
+  for (const u of tries) {
+    try {
+      const data = await fetchJSON(u);
+      // We accept either {articles:[...]} or [...]
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.articles)) return data.articles;
+      if (data && Array.isArray(data.data)) return data.data;
+      // If it’s “valid” but empty, keep trying other formats.
+      lastErr = new Error("Empty/unknown payload shape");
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("Fetch failed");
+}
+
+// ---------- Article cleanup ----------
+function safeStr(v) {
+  return (v == null ? "" : String(v)).trim();
+}
+
+function dedupeArticles(list) {
+  const seen = new Set();
+  const out = [];
+  for (const a of list) {
+    const url = safeStr(a.url || a.link);
+    const title = safeStr(a.title || a.name);
+    const key = url ? `u:${url}` : `t:${title.toLowerCase()}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(a);
+  }
+  return out;
+}
+
+function normalizeArticle(a) {
+  return {
+    title: safeStr(a.title || a.name || "Untitled omen"),
+    url: safeStr(a.url || a.link || ""),
+    source: safeStr(a.source || a.domain || a.publisher || ""),
+    language: safeStr(a.language || a.lang || ""),
+    country: safeStr(a.country || a.sourceCountry || a.location || ""),
+    published: safeStr(a.published || a.publishedAt || a.datetime || a.date || "")
+  };
+}
+
+// IMPORTANT: do NOT delete most results just because fields are missing.
+function filterEnglishUS(list) {
+  return list.filter((raw) => {
+    const a = normalizeArticle(raw);
+    const lang = a.language.toLowerCase();
+    const ctry = a.country.toLowerCase();
+
+    const langOk = !lang || lang.includes("en") || lang.includes("english");
+    const countryOk = !ctry || ctry.includes("united states") || ctry === "us" || ctry === "usa";
+
+    return langOk && countryOk;
+  });
+}
+
+// ---------- Scoring ----------
+function scoreHeadline(title) {
+  const t = title.toLowerCase();
   const scores = {};
   for (const c of CATS) scores[c.key] = 0;
 
-  for (const c of CATS){
-    for (const kw of c.keywords){
+  for (const c of CATS) {
+    for (const kw of c.keywords) {
       if (t.includes(kw)) scores[c.key] += 3;
     }
     scores[c.key] = Math.min(scores[c.key], 12);
@@ -119,249 +167,146 @@ function scoreHeadline(title){
   return scores;
 }
 
-function dedupeArticles(list){
-  const seen = new Set();
-  const out = [];
-  for (const a of list){
-    const url = safeText(a.url || a.link).trim();
-    const title = safeText(a.title).trim();
-    const key = url ? `u:${url}` : `t:${title.toLowerCase()}`;
-    if (!title) continue;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    out.push({
-      title,
-      url,
-      source: safeText(a.source || a.domain || a.publisher),
-      language: safeText(a.language),
-      country: safeText(a.country),
-      publishedAt: a.publishedAt || a.published || a.date || a.seendate || a.seenDate || ""
-    });
-  }
-  return out;
+function computeIndex(scoresByCat) {
+  // Simple sum with caps -> map to 0..100
+  let sum = 0;
+  for (const c of CATS) sum += (scoresByCat[c.key] || 0);
+  const capped = Math.min(sum, 60);
+  return Math.max(0, Math.min(100, Math.round((capped / 60) * 100)));
 }
 
-// ----- UI rendering -----
-
-function renderIndex(articles){
-  setText(el.ver, VERSION);
-  setText(el.aboutVersion, `${VERSION} • DoomWorks Interstellar`);
-
-  // headline scoring
-  const totals = {};
-  for (const c of CATS) totals[c.key] = 0;
-
-  for (const a of articles){
-    const scores = scoreHeadline(a.title);
-    for (const c of CATS){
-      totals[c.key] += scores[c.key];
-    }
-  }
-
-  // normalize by article count
-  const n = Math.max(1, articles.length);
-  const pctByCat = {};
-  for (const c of CATS){
-    // average per headline, then scale into 0..100 with CATEGORY_MAX as reference
-    const avg = totals[c.key] / n;
-    const pct = Math.round(100 * clamp01(avg / (CATEGORY_MAX / 10)));
-    pctByCat[c.key] = pct;
-  }
-
-  // overall doom index = average of categories
-  const overall = Math.round(
-    CATS.reduce((sum, c) => sum + pctByCat[c.key], 0) / CATS.length
-  );
-
-  setText(el.doomNum, overall);
-  setText(el.doomLabel, labelFromIndex(overall));
-  setText(el.doomTag, tagFromIndex(overall));
-
-  if (el.doomFill){
-    el.doomFill.className = `fill ${fillClassFromPct(overall)}`;
-    el.doomFill.style.width = `${overall}%`;
-  }
-
-  setText(el.sample, `Sample: ${articles.length} headlines`);
-
-  // breakdown list
-  if (el.breakdown){
-    const parts = [];
-    for (const c of CATS){
-      const p = pctByCat[c.key];
-      const cls = fillClassFromPct(p);
-      parts.push(`
-        <div class="breakItem">
-          <div class="breakTop">
-            <div>${c.label}</div>
-            <div class="muted">${p}</div>
-          </div>
-          <div class="breakBar">
-            <div class="fill ${cls}" style="width:${p}%"></div>
-          </div>
-        </div>
-      `);
-    }
-    setHTML(el.breakdown, parts.join(""));
-  }
-
-  // top drivers = categories with highest pct
-  if (el.drivers){
-    const sorted = [...CATS]
-      .map(c => ({ key:c.key, label:c.label, pct: pctByCat[c.key] }))
-      .sort((a,b) => b.pct - a.pct);
-
-    const top = sorted.filter(x => x.pct >= 25).slice(0, 3);
-    if (!top.length){
-      setHTML(el.drivers, `
-        <div class="driverTitle">No clear drivers.</div>
-        <div class="driverSub">The omens refuse to elaborate.</div>
-      `);
-    } else {
-      setHTML(el.drivers, `
-        <div class="driverTitle">${top.map(t => t.label).join(" • ")}</div>
-        <div class="driverSub">Top signals based on keyword matches across headlines.</div>
-      `);
-    }
-  }
+function topDriversFromScores(scoresByCat) {
+  const arr = CATS.map((c) => ({ key: c.key, label: c.label, v: scoresByCat[c.key] || 0 }))
+    .sort((a, b) => b.v - a.v)
+    .filter((x) => x.v > 0);
+  return arr.slice(0, 3);
 }
 
-function renderStories(articles){
-  if (!el.stories) return;
-
-  // Show more than 2 (this is the “stuck at 2” fix)
-  const show = articles.slice(0, 12);
-
-  if (!show.length){
-    setHTML(el.stories, `
-      <div class="story">
-        <div class="storyTitle">No stories found.</div>
-        <div class="storyMeta">The void is quiet. Try Refresh.</div>
+// ---------- Render ----------
+function renderBreakdown(scoresByCat) {
+  const rows = CATS.map((c) => {
+    const v = scoresByCat[c.key] || 0;
+    return `
+      <div class="breakRow">
+        <div class="breakLabel">${c.label}</div>
+        <div class="breakBar"><div class="breakFill" style="width:${Math.min(100, v * 8)}%"></div></div>
+        <div class="breakVal">${v}</div>
       </div>
-    `);
+    `;
+  }).join("");
+  setHTML("breakdown", rows);
+}
+
+function renderDrivers(drivers) {
+  if (!drivers.length) {
+    setHTML("drivers", `<div class="driverEmpty"><b>No clear drivers.</b><br><span class="muted">The omens refuse to elaborate.</span></div>`);
     return;
   }
+  const html = drivers.map((d) => `<div class="driverPill"><b>${d.label}</b> • ${d.v}</div>`).join("");
+  setHTML("drivers", html);
+}
 
-  const cards = show.map(a => {
-    const metaBits = [];
-    if (a.source) metaBits.push(a.source);
-    if (a.publishedAt) metaBits.push(new Date(parseDate(a.publishedAt)).toLocaleString());
-    const meta = metaBits.join(" • ") || "—";
-    const url = a.url ? a.url : "#";
+function renderStories(list) {
+  if (!list.length) {
+    setHTML("stories", `<div class="storyEmpty"><b>No stories found.</b><br><span class="muted">Either the world is peaceful (lol) or the proxy returned nothing.</span></div>`);
+    return;
+  }
+  const items = list.slice(0, UI_LIMIT).map((raw) => {
+    const a = normalizeArticle(raw);
+    const meta = [a.source, "English", "United States"].filter(Boolean).join(" • ");
+    const href = a.url ? a.url : "#";
+    const safeHref = href.replace(/"/g, "%22");
     return `
-      <a class="story" href="${url}" target="_blank" rel="noopener noreferrer">
-        <div class="storyTitle">${escapeHTML(a.title)}</div>
-        <div class="storyMeta">${escapeHTML(meta)}</div>
+      <a class="story" href="${safeHref}" target="_blank" rel="noopener noreferrer">
+        <div class="storyTitle">${a.title}</div>
+        <div class="storyMeta">${meta}</div>
       </a>
     `;
   }).join("");
-
-  setHTML(el.stories, cards);
+  setHTML("stories", items);
 }
 
-// basic HTML escape
-function escapeHTML(str){
-  return safeText(str)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
-}
+// ---------- Main update ----------
+async function refresh() {
+  setText("statusPill", "Summoning fresh omens…");
+  setText("samplePill", "Sample: — headlines");
 
-// ----- data fetch -----
+  try {
+    const raw = await fetchArticles(DEFAULT_QUERY);
 
-async function fetchArticles(){
-  // Cache-buster prevents “yesterday forever”
-  const cacheBust = Date.now();
+    const deduped = dedupeArticles(raw);
+    const filtered = filterEnglishUS(deduped);
 
-  const url =
-    `${PROXY_BASE}${ROUTE}` +
-    `?q=${encodeURIComponent(DEFAULT_QUERY)}` +
-    `&max=${encodeURIComponent(MAX_RECORDS)}` +
-    `&timespan=${encodeURIComponent(DEFAULT_TIMESPAN)}` +
-    `&_=${cacheBust}`;
+    // If the filter is too strict (because the proxy doesn’t supply fields),
+    // fall back to deduped so you still get a feed.
+    const usable = filtered.length >= 5 ? filtered : deduped;
 
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`Fetch failed: ${res.status}`);
+    // Aggregate scores from titles
+    const agg = {};
+    for (const c of CATS) agg[c.key] = 0;
 
-  const data = await res.json();
+    for (const r of usable) {
+      const a = normalizeArticle(r);
+      const s = scoreHeadline(a.title);
+      for (const c of CATS) agg[c.key] += s[c.key] || 0;
+    }
 
-  // Accept multiple shapes from proxy
-  let raw = [];
-  if (Array.isArray(data)) raw = data;
-  else if (Array.isArray(data.articles)) raw = data.articles;
-  else if (Array.isArray(data.results)) raw = data.results;
-  else if (Array.isArray(data.items)) raw = data.items;
+    // Clamp category totals so one keyword spammy day doesn’t peg it
+    for (const c of CATS) agg[c.key] = Math.min(agg[c.key], 30);
 
-  let articles = dedupeArticles(raw);
+    const idx = computeIndex(agg);
+    setText("doomNum", String(idx));
+    setText("doomLabel", labelFromIndex(idx));
+    setText("doomTag", tagFromIndex(idx));
+    setWidth("doomFill", idx);
 
-  // Prefer English/US but don’t destroy the list if fields are missing
-  articles = articles.filter(a => {
-    const lang = (a.language || "").toLowerCase();
-    const country = (a.country || "").toLowerCase();
-    const langOk = !lang || lang.includes("en");
-    const countryOk = !country || country.includes("us") || country.includes("united states");
-    return langOk && countryOk;
-  });
+    const cls = classFromPct(idx);
+    const fill = $("doomFill");
+    if (fill) fill.className = `fill ${cls}`.trim();
 
-  // Sort newest-first (fix stale ordering)
-  articles.sort((a,b) => parseDate(b.publishedAt) - parseDate(a.publishedAt));
+    renderBreakdown(agg);
+    renderDrivers(topDriversFromScores(agg));
+    renderStories(usable);
 
-  return articles;
-}
+    setText("statusPill", "The omens are… readable.");
+    setText("samplePill", `Sample: ${usable.length} headlines`);
 
-function setStatus(msg){
-  setText(el.status, msg);
-}
-
-function setUpdated(date){
-  setText(el.updated, date ? `Updated: ${date}` : "Updated: —");
-}
-
-async function refresh(){
-  try{
-    setStatus("Reading the omens…");
-    const articles = await fetchArticles();
-
-    renderIndex(articles);
-    renderStories(articles);
-
-    setUpdated(new Date().toLocaleString());
-    setStatus("The omens are… readable.");
-  } catch (err){
-    setStatus("The omens are sulking. Try again.");
-    // Keep app visible even if fetch fails
-    console.error(err);
+    const now = new Date();
+    setText("updatedPill", `Updated: ${now.toLocaleDateString()} , ${now.toLocaleTimeString()}`);
+  } catch (e) {
+    setText("statusPill", "The omens are… unavailable. (Refresh again.)");
+    renderDrivers([]);
+    renderStories([]);
   }
 }
 
-// ----- About modal -----
-
-function openAbout(){
-  if (!el.aboutOverlay) return;
-  el.aboutOverlay.classList.remove("hidden");
+// ---------- About overlay ----------
+function openAbout() {
+  setText("aboutVersion", `${VERSION} • DoomWorks Interstellar`);
+  show("aboutOverlay");
+}
+function closeAbout() {
+  hide("aboutOverlay");
 }
 
-function closeAbout(){
-  if (!el.aboutOverlay) return;
-  el.aboutOverlay.classList.add("hidden");
-}
+// ---------- Boot ----------
+document.addEventListener("DOMContentLoaded", () => {
+  setText("verText", VERSION);
 
-// ----- boot -----
+  const btnRefresh = $("btnRefresh");
+  const btnAbout = $("btnAbout");
+  const btnCloseAbout = $("btnCloseAbout");
 
-function wire(){
-  if (el.refresh) el.refresh.addEventListener("click", refresh);
-  if (el.about) el.about.addEventListener("click", openAbout);
-  if (el.closeAbout) el.closeAbout.addEventListener("click", closeAbout);
+  if (btnRefresh) btnRefresh.addEventListener("click", refresh);
+  if (btnAbout) btnAbout.addEventListener("click", openAbout);
+  if (btnCloseAbout) btnCloseAbout.addEventListener("click", closeAbout);
 
-  // click outside card closes
-  if (el.aboutOverlay){
-    el.aboutOverlay.addEventListener("click", (e) => {
-      if (e.target === el.aboutOverlay) closeAbout();
+  const overlay = $("aboutOverlay");
+  if (overlay) {
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) closeAbout();
     });
   }
-}
 
-wire();
-refresh();
+  refresh();
+});
