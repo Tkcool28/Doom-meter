@@ -2,29 +2,22 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="theme-color" content="#0b0f17" />
-
   <title>Doomroom News</title>
 
-  <!-- PWA -->
-  <link rel="manifest" href="./manifest.webmanifest" />
-  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Doomroom" />
-
-  <!-- Favicons -->
-  <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
-  <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png" />
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
   <div class="wrap">
-    <div class="top">
-      <div class="kicker">GLOBAL BRIEFING</div>
+    <div class="header">
+      <div class="tinyTop">GLOBAL BRIEFING</div>
       <h1>Doomroom News</h1>
       <div class="sub">Doom Index (Highly Scientific)</div>
 
@@ -33,74 +26,78 @@
         <button id="btnAbout">About</button>
       </div>
 
-      <div class="pill" id="statusPill">The omens are… <b>readable</b>.</div>
-      <div class="pill muted" id="updatedPill">Updated: —</div>
+      <div class="row">
+        <div class="pill muted" id="statusPill">The omens are... readable.</div>
+      </div>
+
+      <div class="row">
+        <div class="pill muted" id="updatedPill">Updated: —</div>
+      </div>
     </div>
 
-    <div class="card">
-      <div class="meterTop">
-        <div class="bigNum" id="doomNum">—</div>
-        <div class="meterRight">
+    <div class="card hero">
+      <div class="heroTop">
+        <div class="bigNum" id="doomNum">0</div>
+        <div class="heroRight">
           <div class="bigLabel" id="doomLabel">Chill (suspiciously).</div>
           <div class="muted" id="doomTag">Take a breath. The universe is weird.</div>
         </div>
       </div>
 
       <div class="mainMeter">
-        <div class="fill" id="doomFill" style="width:0%"></div>
+        <div class="fill" id="doomFill"></div>
       </div>
 
-      <div class="row" style="margin-top:12px;">
+      <div class="row">
         <div class="pill" id="okPill">OK</div>
-        <div class="pill muted" id="filterPill">Filter: English / United States</div>
-        <div class="pill muted" id="samplePill">Sample: — headlines</div>
+        <div class="pill muted" id="filterPill">Filter: English (global)</div>
+      </div>
+
+      <div class="row">
+        <div class="pill muted" id="samplePill">Sample: 0 headlines</div>
       </div>
 
       <div class="sectionTitle">DOOM BREAKDOWN</div>
       <div id="breakdown"></div>
 
       <div class="sectionTitle">TOP DRIVERS</div>
-      <div id="drivers" class="drivers"></div>
+      <div id="drivers"></div>
     </div>
 
     <div class="card">
       <div class="sectionTitle">LATEST STORIES</div>
-      <div id="stories" class="stories"></div>
-    </div>
-
-    <div class="footer muted">
-      <span id="verText">v—</span>
+      <div id="stories"></div>
+      <div class="foot muted" id="verText">v—</div>
     </div>
   </div>
 
-  <!-- About overlay -->
-  <div id="aboutOverlay" class="overlay hidden" role="dialog" aria-modal="true">
-    <div class="overlayCard">
-      <div class="overlayHead">
-        <div class="overlayIcon">🧊</div>
+  <!-- About Overlay -->
+  <div class="overlay" id="aboutOverlay">
+    <div class="modal">
+      <div class="modalHead">
+        <div class="modalIcon">☄️</div>
         <div>
-          <div class="overlayTitle">Doomroom News</div>
-          <div class="overlaySub" id="aboutVersion">v— • DoomWorks Interstellar</div>
+          <div class="modalTitle">Doomroom News</div>
+          <div class="muted" id="aboutVersion">v—</div>
         </div>
       </div>
 
-      <div class="overlayBody">
-        <div class="overlayLine"><b>Built by DoomWorks Interstellar</b>, a proud subsidiary of <b>“Everything Is Fine, LLC”</b>.</div>
-        <div class="overlayLine">This software does not predict the future. It stares into the headlines and whispers: <i>“hmm.”</i></div>
-        <div class="overlayLine">If the Doom Index spikes: drink water, touch grass, pet a dog, and remember: <b>the omens are dramatic little liars.</b></div>
+      <div class="modalBody">
+        <p><b>Built by DoomWorks Interstellar</b>, a proud subsidiary of “Everything Is Fine, LLC”.</p>
+        <p>This software does not predict the future. It stares into headlines and whispers: <i>"hmm."</i></p>
+        <p>If the Doom Index spikes: drink water, touch grass, pet a dog, and remember: <b>the omens are dramatic little liars.</b></p>
       </div>
 
-      <div class="overlayActions">
-        <button id="btnCloseAbout" class="okBtn">OK. I’m calm’ish.</button>
+      <div class="row right">
+        <button id="btnCloseAbout">OK, I'm calm'ish</button>
+        <button id="btnCloseAbout2" class="ghost">OK</button>
       </div>
     </div>
   </div>
 
-  <noscript>This app needs JavaScript to read the omens.</noscript>
-
   <script src="./app.js" defer></script>
 
-  <!-- Service worker (safe, scoped to this folder) -->
+  <!-- Service Worker -->
   <script>
     (function () {
       if (!("serviceWorker" in navigator)) return;
