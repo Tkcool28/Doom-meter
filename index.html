@@ -1,354 +1,53 @@
 <!doctype html>
 <html lang="en">
-<head> <!-- PWA / iOS Home Screen -->
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#0b0f16">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Doomroom News</title>
 
-<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Doomroom">
+    <!-- Theme -->
+    <meta name="theme-color" content="#0b0f16" />
+    <meta name="color-scheme" content="dark" />
 
-<!-- Favicons -->
-<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
-<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png"> <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-<link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
-<link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png" /> <link rel="apple-touch-icon" href="icons/doomroom-192.png"> <link rel="manifest" href="./manifest.webmanifest">
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="./manifest.webmanifest" />
 
-<meta name="theme-color" content="#0b0f17">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Doomroom">
+    <!-- iOS: Add to Home Screen -->
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Doomroom" />
 
-<!-- iOS home screen icon -->
-<link rel="apple-touch-icon" href="./icons/icon-192.png">
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="color-scheme" content="dark" />
-  <title>Doomroom News</title>
+    <!-- Favicons -->
+    <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png" />
 
-  <style>
-    :root{
-      --bg:#0b0f17;
-      --panel:rgba(255,255,255,.05);
-      --panel2:rgba(255,255,255,.035);
-      --stroke:rgba(255,255,255,.10);
-      --stroke2:rgba(255,255,255,.16);
-      --text:#e8edf6;
-      --muted:rgba(232,237,246,.72);
-      --muted2:rgba(232,237,246,.55);
-      --shadow: 0 16px 60px rgba(0,0,0,.45);
-      --r:18px;
-    }
+    <!-- Styles -->
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
 
-    *{box-sizing:border-box}
-    html,body{height:100%}
-    body{
-      margin:0;
-      font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
-      background:
-        radial-gradient(1200px 700px at 40% 0%, rgba(255,255,255,.08), transparent 55%),
-        radial-gradient(900px 600px at 90% 20%, rgba(255,255,255,.06), transparent 60%),
-        var(--bg);
-      color:var(--text);
-      overflow-x:hidden; /* kill accidental sideways scroll */
-    }
-
-    .wrap{max-width:980px; margin:0 auto; padding:26px 18px 70px;}
-    .kicker{letter-spacing:.32em; text-transform:uppercase; color:var(--muted2); font-size:12px; margin:10px 0 8px;}
-    h1{font-size:44px; margin:0; letter-spacing:-.02em;}
-    .sub{margin:8px 0 14px; color:var(--muted); font-size:18px;}
-
-    .row{display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:14px 0 10px;}
-    button{
-      appearance:none; border:1px solid var(--stroke);
-      background: rgba(255,255,255,.06);
-      color:var(--text);
-      padding:10px 14px;
-      border-radius:999px;
-      font-weight:700;
-      letter-spacing:.01em;
-      cursor:pointer;
-      box-shadow: 0 6px 22px rgba(0,0,0,.25);
-    }
-    button:active{transform: translateY(1px)}
-    button:hover{border-color:var(--stroke2)}
-    .pill{
-      border:1px solid var(--stroke);
-      background: rgba(255,255,255,.03);
-      color:var(--muted);
-      padding:9px 12px;
-      border-radius:999px;
-      font-size:13px;
-      max-width:100%;
-      overflow:hidden;
-      text-overflow:ellipsis;
-      white-space:nowrap;
-    }
-
-    .card{
-      margin-top:18px;
-      padding:18px;
-      border-radius: var(--r);
-      border:1px solid var(--stroke);
-      background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.03));
-      box-shadow: var(--shadow);
-    }
-
-    .hero{
-      display:flex;
-      gap:16px;
-      align-items:flex-start;
-      flex-wrap:wrap;
-    }
-    .doomNum{
-      font-size:72px;
-      line-height:1;
-      font-weight:900;
-      letter-spacing:-.04em;
-      margin:0;
-      min-width:86px;
-    }
-    .heroRight{flex:1; min-width:260px;}
-    .doomLabel{
-      font-size:34px;
-      margin:4px 0 6px;
-      font-weight:900;
-      letter-spacing:-.02em;
-    }
-    .doomTag{color:var(--muted); margin:0 0 12px; font-weight:600;}
-
-    .meterTrack{
-      position:relative;
-      height:18px;
-      border-radius:999px;
-      border:1px solid var(--stroke);
-      background: rgba(0,0,0,.25);
-      overflow:hidden;
-    }
-    .meterFill{
-      height:100%;
-      width:0%;
-      border-radius:999px;
-      transition: width .35s ease;
-      background: #2ecc71;
-      box-shadow: 0 0 0 1px rgba(255,255,255,.10) inset;
-    }
-    .meterFill.yellow{background:#f1c40f;}
-    .meterFill.red{background:#e74c3c;}
-    .meterFill.fire{
-      background: repeating-linear-gradient(
-        135deg,
-        #ff6a00 0px,
-        #ff6a00 10px,
-        #ff2d55 10px,
-        #ff2d55 20px
-      );
-      filter: saturate(1.2);
-    }
-
-    .sectionTitle{
-      margin:18px 0 10px;
-      letter-spacing:.35em;
-      text-transform:uppercase;
-      color:var(--muted2);
-      font-size:12px;
-    }
-
-    /* ✅ Breakdown rows: desktop = label left, bar right. Mobile = stack (no sideways scroll). */
-    .breakdown{
-      display:flex;
-      flex-direction:column;
-      gap:12px;
-      margin-top:10px;
-    }
-    .bRow{
-      display:flex;
-      align-items:center;
-      gap:12px;
-      min-width:0; /* prevent overflow */
-    }
-    .bLabel{
-      flex: 1 1 auto;
-      min-width:0;
-      font-size:24px;
-      font-weight:800;
-      letter-spacing:-.01em;
-    }
-    .bBarWrap{
-      flex: 0 0 220px;         /* smaller than before */
-      max-width:220px;
-      min-width:160px;
-    }
-    .bVal{
-      width:34px;
-      text-align:right;
-      color:var(--muted);
-      font-weight:800;
-      flex: 0 0 auto;
-    }
-
-    @media (max-width:720px){
-      h1{font-size:40px}
-      .doomLabel{font-size:30px}
-      .bLabel{font-size:22px}
-
-      /* 🔥 mobile stack */
-      .bRow{flex-direction:column; align-items:stretch; gap:8px;}
-      .bBarWrap{flex: 1 1 auto; max-width:100%; min-width:0;}
-      .bVal{width:auto; text-align:left;}
-    }
-
-    .list{display:flex; flex-direction:column; gap:12px;}
-    .story{
-      display:block;
-      padding:14px 14px;
-      border-radius:16px;
-      border:1px solid var(--stroke);
-      background: rgba(255,255,255,.03);
-      text-decoration:none;
-      color:var(--text);
-    }
-    .story:hover{border-color:var(--stroke2)}
-    .storyTitle{font-weight:900; font-size:20px; letter-spacing:-.01em; margin:0 0 6px;}
-    .storyMeta{color:var(--muted); font-size:13px;}
-
-    .footerVer{
-      margin-top:12px;
-      color:var(--muted2);
-      font-weight:700;
-    }
-
-    /* ✅ About modal: NOT transparent; readable */
-    .modalOverlay{
-      position:fixed; inset:0;
-      background: rgba(0,0,0,.72);
-      display:none;
-      align-items:center;
-      justify-content:center;
-      padding:18px;
-      z-index:9999;
-    }
-    .modal{
-      width:min(520px, 100%);
-      border-radius:22px;
-      border:1px solid rgba(255,255,255,.18);
-      background: rgba(10,14,22,.92); /* solid-ish */
-      box-shadow: 0 24px 80px rgba(0,0,0,.65);
-      padding:18px;
-      backdrop-filter: blur(8px);
-    }
-    .modalTop{
-      display:flex;
-      align-items:center;
-      justify-content:space-between;
-      gap:12px;
-      margin-bottom:10px;
-    }
-    .logoMark{
-      width:36px; height:36px; border-radius:12px;
-      border:1px solid rgba(255,255,255,.18);
-      display:grid; place-items:center;
-      background: rgba(255,255,255,.08);
-      font-size:18px;
-    }
-    .modalTitle{
-      font-size:18px; font-weight:900; margin:0;
-    }
-    .modalBody{
-      color:rgba(232,237,246,.86);
-      line-height:1.45;
-      font-weight:600;
-    }
-    .modalActions{display:flex; justify-content:flex-end; margin-top:14px;}
-  </style>
-</head>
-
-<body>
-  <div class="wrap">
-    <div class="kicker">GLOBAL BRIEFING</div>
-    <h1>Doomroom News</h1>
-    <div class="sub">Doom Index (Highly Scientific)</div>
-
-    <div class="row">
-      <button id="btnRefresh" type="button">Refresh</button>
-      <button id="btnAbout" type="button">About</button>
-      <div class="pill" id="statusPill">Idle</div>
-      <div class="pill" id="updatedPill">Updated: —</div>
+  <body>
+    <!-- App Root -->
+    <div id="app" class="page">
+      <noscript>This app needs JavaScript to read the omens.</noscript>
     </div>
 
-    <div class="card">
-      <div class="hero">
-        <div class="doomNum" id="doomNum">—</div>
+    <!-- App Script -->
+    <script src="./app.js" defer></script>
 
-        <div class="heroRight">
-          <div class="doomLabel" id="doomLabel">Awaiting omens…</div>
-          <p class="doomTag" id="doomTag">Take a breath. The universe is weird. You’re doing fine.</p>
+    <!-- Service Worker -->
+    <script>
+      (function () {
+        if (!("serviceWorker" in navigator)) return;
 
-          <div class="meterTrack" aria-label="Doom meter">
-            <div class="meterFill" id="doomFill"></div>
-          </div>
-
-          <div class="row" style="margin-top:12px">
-            <div class="pill" id="okPill">OK</div>
-            <div class="pill" id="filterPill">Filter: English / United States</div>
-            <div class="pill" id="samplePill">Sample: 0 headlines</div>
-          </div>
-
-          <div class="sectionTitle">DOOM BREAKDOWN</div>
-          <div class="breakdown" id="breakdown"></div>
-
-          <div class="sectionTitle" style="margin-top:18px">TOP DRIVERS</div>
-          <div class="list" id="drivers"></div>
-        </div>
-      </div>
-    </div>
-
-    <div class="card">
-      <div class="sectionTitle">LATEST STORIES</div>
-      <div class="list" id="stories"></div>
-      <div class="footerVer" id="verText">v3.1.4</div>
-    </div>
-  </div>
-
-  <!-- About modal -->
-  <div class="modalOverlay" id="aboutOverlay" role="dialog" aria-modal="true" aria-label="About Doomroom News">
-    <div class="modal">
-      <div class="modalTop">
-        <div style="display:flex; align-items:center; gap:10px;">
-          <div class="logoMark">☄️</div>
-          <div>
-            <p class="modalTitle">Doomroom News</p>
-            <div class="storyMeta" id="aboutVersion">v3.1.4 • DoomWorks Interstellar</div>
-          </div>
-        </div>
-        <button id="btnCloseAbout" type="button">Close</button>
-      </div>
-
-      <div class="modalBody" id="aboutBody">
-        <p style="margin:0 0 10px;">
-          Built by <b>DoomWorks Interstellar</b>, a proud subsidiary of <b>“Everything Is Fine, LLC”</b>.
-        </p>
-        <p style="margin:0 0 10px;">
-          This software does not predict the future. It merely stares into the headlines and whispers: <i>“hmm.”</i>
-        </p>
-        <p style="margin:0;">
-          If the Doom Index spikes: drink water, touch grass, and remember the omens are dramatic little liars.
-        </p>
-      </div>
-
-      <div class="modalActions">
-        <button id="btnCloseAbout2" type="button">OK, I’m calm’ish</button>
-      </div>
-    </div>
-  </div>
-
-  <script defer src="./app.js"></script>
-<script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(console.error);
-    });
-  }
-</script> </body>
+        window.addEventListener("load", function () {
+          navigator.serviceWorker
+            .register("./sw.js", { scope: "./" })
+            .catch(function () {
+              // Silent fail is fine; site still works without SW.
+            });
+        });
+      })();
+    </script>
+  </body>
 </html>
