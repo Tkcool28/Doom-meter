@@ -3,109 +3,305 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="color-scheme" content="dark light" />
+  <meta name="color-scheme" content="dark" />
   <title>Doomroom News</title>
 
-  <!-- Use your external CSS -->
-  <link rel="stylesheet" href="./styles.css?v=3.1.1" />
-</head>
+  <style>
+    :root{
+      --bg:#0b0f17;
+      --panel:rgba(255,255,255,.05);
+      --panel2:rgba(255,255,255,.035);
+      --stroke:rgba(255,255,255,.10);
+      --stroke2:rgba(255,255,255,.14);
+      --text:#e8edf6;
+      --muted:rgba(232,237,246,.72);
+      --muted2:rgba(232,237,246,.55);
+      --shadow: 0 16px 60px rgba(0,0,0,.45);
+      --r:18px;
+    }
 
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family: system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background: radial-gradient(1200px 700px at 40% 0%, rgba(255,255,255,.08), transparent 55%),
+                  radial-gradient(900px 600px at 90% 20%, rgba(255,255,255,.06), transparent 60%),
+                  var(--bg);
+      color:var(--text);
+    }
+
+    .wrap{max-width:980px; margin:0 auto; padding:26px 18px 70px;}
+    .kicker{letter-spacing:.32em; text-transform:uppercase; color:var(--muted2); font-size:12px; margin:10px 0 8px;}
+    h1{font-size:44px; margin:0; letter-spacing:-.02em;}
+    .sub{margin:8px 0 14px; color:var(--muted); font-size:18px;}
+
+    .row{display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin:14px 0 10px;}
+    button{
+      appearance:none; border:1px solid var(--stroke);
+      background: rgba(255,255,255,.06);
+      color:var(--text);
+      padding:10px 14px;
+      border-radius:999px;
+      font-weight:700;
+      letter-spacing:.01em;
+      cursor:pointer;
+      box-shadow: 0 6px 22px rgba(0,0,0,.25);
+    }
+    button:active{transform: translateY(1px)}
+    button:hover{border-color:var(--stroke2)}
+    .pill{
+      border:1px solid var(--stroke);
+      background: rgba(255,255,255,.03);
+      color:var(--muted);
+      padding:9px 12px;
+      border-radius:999px;
+      font-size:13px;
+      max-width:100%;
+      overflow:hidden;
+      text-overflow:ellipsis;
+      white-space:nowrap;
+    }
+
+    .card{
+      margin-top:18px;
+      padding:18px;
+      border-radius: var(--r);
+      border:1px solid var(--stroke);
+      background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.03));
+      box-shadow: var(--shadow);
+    }
+
+    .hero{
+      display:flex;
+      gap:16px;
+      align-items:flex-start;
+    }
+    .doomNum{
+      font-size:72px;
+      line-height:1;
+      font-weight:900;
+      letter-spacing:-.04em;
+      margin:0;
+      min-width:86px;
+    }
+    .heroRight{flex:1}
+    .doomLabel{
+      font-size:34px;
+      margin:4px 0 6px;
+      font-weight:900;
+      letter-spacing:-.02em;
+    }
+    .doomTag{color:var(--muted); margin:0 0 12px; font-weight:600;}
+
+    .meterTrack{
+      position:relative;
+      height:18px;
+      border-radius:999px;
+      border:1px solid var(--stroke);
+      background: rgba(0,0,0,.25);
+      overflow:hidden;
+    }
+    .meterFill{
+      height:100%;
+      width:0%;
+      border-radius:999px;
+      transition: width .35s ease;
+      background: #2ecc71;
+      box-shadow: 0 0 0 1px rgba(255,255,255,.10) inset;
+    }
+    .meterFill.yellow{background:#f1c40f;}
+    .meterFill.red{background:#e74c3c;}
+    .meterFill.fire{
+      background: repeating-linear-gradient(
+        135deg,
+        #ff6a00 0px,
+        #ff6a00 10px,
+        #ff2d55 10px,
+        #ff2d55 20px
+      );
+      filter: saturate(1.2);
+    }
+
+    .sectionTitle{
+      margin:18px 0 10px;
+      letter-spacing:.35em;
+      text-transform:uppercase;
+      color:var(--muted2);
+      font-size:12px;
+    }
+
+    .breakdown{
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      margin-top:10px;
+    }
+    .bRow{
+      display:flex;
+      align-items:center;
+      gap:12px;
+    }
+    .bLabel{
+      flex: 1 1 auto;
+      font-size:24px;
+      font-weight:800;
+      letter-spacing:-.01em;
+    }
+    .bBarWrap{
+      flex: 0 0 260px;
+      max-width:260px;
+    }
+    .bVal{
+      width:34px;
+      text-align:right;
+      color:var(--muted);
+      font-weight:800;
+    }
+    @media (max-width:720px){
+      .bLabel{font-size:22px}
+      .bBarWrap{flex-basis:210px; max-width:210px}
+    }
+
+    .list{display:flex; flex-direction:column; gap:12px;}
+    .story{
+      display:block;
+      padding:14px 14px;
+      border-radius:16px;
+      border:1px solid var(--stroke);
+      background: rgba(255,255,255,.03);
+      text-decoration:none;
+      color:var(--text);
+    }
+    .story:hover{border-color:var(--stroke2)}
+    .storyTitle{font-weight:900; font-size:20px; letter-spacing:-.01em; margin:0 0 6px;}
+    .storyMeta{color:var(--muted); font-size:13px;}
+
+    .footerVer{
+      margin-top:12px;
+      color:var(--muted2);
+      font-weight:700;
+    }
+
+    /* Modal */
+    .modalOverlay{
+      position:fixed; inset:0;
+      background: rgba(0,0,0,.6);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+    }
+    .modal{
+      width:min(520px, 100%);
+      border-radius:22px;
+      border:1px solid var(--stroke);
+      background: linear-gradient(180deg, rgba(255,255,255,.075), rgba(255,255,255,.035));
+      box-shadow: 0 24px 80px rgba(0,0,0,.55);
+      padding:18px;
+    }
+    .modalTop{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      margin-bottom:10px;
+    }
+    .logoMark{
+      width:36px; height:36px; border-radius:12px;
+      border:1px solid var(--stroke);
+      display:grid; place-items:center;
+      background: rgba(255,255,255,.06);
+      font-size:18px;
+    }
+    .modalTitle{
+      font-size:18px; font-weight:900; margin:0;
+    }
+    .modalBody{
+      color:var(--muted);
+      line-height:1.4;
+      font-weight:600;
+    }
+    .modalActions{display:flex; justify-content:flex-end; margin-top:14px;}
+  </style>
+</head>
 <body>
   <div class="wrap">
-    <div class="sub">GLOBAL BRIEFING</div>
+    <div class="kicker">GLOBAL BRIEFING</div>
     <h1>Doomroom News</h1>
     <div class="sub">Doom Index (Highly Scientific)</div>
 
     <div class="row">
-      <button id="refreshBtn">Refresh</button>
-      <button id="aboutBtn">About</button>
-      <span id="statusPill" class="pill">Idle</span>
-      <span id="updatedPill" class="pill">Updated: —</span>
+      <button id="btnRefresh" type="button">Refresh</button>
+      <button id="btnAbout" type="button">About</button>
+      <div class="pill" id="statusPill">Idle</div>
+      <div class="pill" id="updatedPill">Updated: —</div>
     </div>
 
-    <!-- MAIN CARD -->
     <div class="card">
-      <div class="row" style="justify-content:space-between; align-items:flex-end; gap:14px;">
-        <div>
-          <div id="doomNumber" class="bigNum">—</div>
+      <div class="hero">
+        <div class="doomNum" id="doomNum">—</div>
+        <div class="heroRight">
+          <div class="doomLabel" id="doomLabel">Awaiting omens…</div>
+          <p class="doomTag" id="doomTag">Take a breath. The universe is weird. You’re doing fine.</p>
+
+          <div class="meterTrack" aria-label="Doom meter">
+            <div class="meterFill" id="doomFill"></div>
+          </div>
+
+          <div class="row" style="margin-top:12px">
+            <div class="pill" id="okPill">OK</div>
+            <div class="pill" id="filterPill">Filter: English / United States</div>
+            <div class="pill" id="samplePill">Sample: 0 headlines</div>
+          </div>
+
+          <div class="sectionTitle">DOOM BREAKDOWN</div>
+          <div class="breakdown" id="breakdown"></div>
+
+          <div class="sectionTitle" style="margin-top:18px">TOP DRIVERS</div>
+          <div class="list" id="drivers"></div>
         </div>
-        <div style="text-align:right;">
-          <div id="doomLabel" class="bigLabel">—</div>
-        </div>
       </div>
-
-      <div class="mainMeter" style="margin-top:10px;">
-        <div id="doomFill" class="fill cGreen" style="width:0%"></div>
-      </div>
-
-      <div class="row" style="margin-top:10px;">
-        <span id="calmPill" class="pill">OK</span>
-        <span id="filterPill" class="pill">Filter: English / United States</span>
-        <span id="samplePill" class="pill">Sample: — headlines</span>
-      </div>
-
-      <div class="sectionTitle">DOOM BREAKDOWN</div>
-      <div id="breakdown" class="breakdown"></div>
-
-      <div class="sectionTitle">TOP DRIVERS</div>
-      <div id="drivers"></div>
     </div>
 
-    <!-- STORIES CARD -->
     <div class="card">
       <div class="sectionTitle">LATEST STORIES</div>
-      <div id="stories"></div>
-      <div class="sub" style="margin-top:12px;">v<span id="versionText">—</span></div>
+      <div class="list" id="stories"></div>
+      <div class="footerVer" id="verText">v3.1.3</div>
     </div>
   </div>
 
-  <!-- ABOUT MODAL -->
-  <div id="aboutOverlay" class="overlay hidden" aria-hidden="true">
-    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
-      <div class="modalHeader">
-        <div class="brand">
-          <div class="doomLogo" aria-hidden="true">
-            <div class="eye"></div>
-            <div class="pupil"></div>
-          </div>
+  <!-- About modal -->
+  <div class="modalOverlay" id="aboutOverlay" role="dialog" aria-modal="true" aria-label="About Doomroom News">
+    <div class="modal">
+      <div class="modalTop">
+        <div style="display:flex; align-items:center; gap:10px;">
+          <div class="logoMark">☄️</div>
           <div>
-            <div class="brandName">OmniOmen Systems</div>
-            <div class="brandTag">“Enterprise-grade dread, delivered daily.”</div>
+            <p class="modalTitle">Doomroom News</p>
+            <div class="storyMeta" id="aboutVersion">v3.1.3 • DoomWorks Interstellar</div>
           </div>
         </div>
-        <button id="aboutCloseBtn" class="iconBtn" aria-label="Close">✕</button>
+        <button id="btnCloseAbout" type="button">Close</button>
       </div>
-
-      <h2 id="aboutTitle" class="modalTitle">About Doomroom</h2>
-
-      <div class="modalBody">
-        <div class="aboutRow">
-          <div class="aboutLabel">Version</div>
-          <div class="aboutValue" id="aboutVersion">—</div>
-        </div>
-
-        <div class="aboutCard">
-          <div class="aboutBig">Take a breath.</div>
-          <div class="aboutSmall">
-            This app is satire. It is not a forecast, prophecy, or financial advice from a haunted spreadsheet.
-            The doom is “highly scientific” in the way vibes are scientific.
-          </div>
-        </div>
-
-        <div class="aboutCard subtle">
-          <div class="aboutSmall">
-            If it spikes: drink water, touch grass, and remember the world is complicated and weird —
-            and it has survived an unbelievable amount of nonsense already.
-          </div>
-        </div>
+      <div class="modalBody" id="aboutBody">
+        <p style="margin:0 0 10px;">
+          Built by <b>DoomWorks Interstellar</b>, a proud subsidiary of <b>“Everything Is Fine, LLC”</b>.
+        </p>
+        <p style="margin:0 0 10px;">
+          This software does not predict the future. It merely stares into the headlines and whispers:
+          <i>“hmm.”</i>
+        </p>
+        <p style="margin:0;">
+          If the Doom Index spikes: drink water, touch grass, and remember the omens are dramatic little liars.
+        </p>
       </div>
-
-      <div class="modalFooter">
-        <button id="aboutOkBtn" class="btnPrimary">OK, I’m calm(ish)</button>
+      <div class="modalActions">
+        <button id="btnCloseAbout2" type="button">OK, I’m calm now</button>
       </div>
     </div>
   </div>
 
-  <script defer src="./app.js?v=3.1.2"></script>
+  <script defer src="./app.js"></script>
 </body>
 </html>
