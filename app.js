@@ -1,23 +1,24 @@
-/* Doomroom News — app.js (single-file)
-   - Fetches headlines via your Cloudflare Worker proxy
-   - Filters English/US
-   - Computes a silly Doom score + category breakdown
-   - Renders side-aligned bars + clickable story cards
+/* Doomroom News — app.js (robust fetch + timeouts)
+   - Never hangs: AbortController timeout
+   - Tries multiple URL patterns (because Worker params evolved)
+   - Shows real failure reasons in the UI
 */
 
-const VERSION = "3.1.1";
+const VERSION = "3.1.2";
 
-// === IMPORTANT: set your worker/proxy base here ===
+// === SET THIS to your Cloudflare Worker base ===
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
 
-// Endpoint on the worker that returns articles.
-// Your worker earlier showed routes like: /gdel?t=query params
-// So we call: /gdel?query=world&mode=ArtList&format=json&maxrecords=50&timespan=1d
+// Worker endpoint
 const ENDPOINT = "/gdel";
 
+// Query defaults
 const DEFAULT_QUERY = "world";
 const MAX_RECORDS = 30;
 const TIME_SPAN = "1d";
+
+// Hard timeout so it can't "hang"
+const FETCH_TIMEOUT_MS = 12000;
 
 // ---------- DOM helpers ----------
 const $ = (id) => document.getElementById(id);
@@ -72,12 +73,12 @@ function wireAbout() {
 const BUCKETS = [
   { key: "conflict", label: "Conflict Heat", words: ["war","strike","missile","attack","invasion","shelling","ceasefire","military","bomb","hostage","terror","airstrike","troops"] },
   { key: "climate", label: "Climate Weirdness", words: ["heat","storm","flood","wildfire","hurricane","tornado","drought","record heat","climate","extreme weather","blizzard"] },
-  { key: "econ", label: "Economic Drama", words: ["recession","inflation","layoffs","bank","debt","rates","market crash","default","bailout","strike","oil prices"] },
+  { key: "econ", label: "Economic Drama", words: ["recession","inflation","layoffs","bank","debt","rates","market crash","default","bailout","oil prices"] },
   { key: "democracy", label: "Democracy Melting", words: ["coup","election fraud","authoritarian","ban","protest","martial law","rights","supreme court","impeachment","shutdown"] },
   { key: "cyber", label: "Cyber Chaos", words: ["hack","breach","ransomware","leak","cyberattack","outage","malware","zero-day"] },
   { key: "nuclear", label: "Nuclear Words", words: ["nuclear","uranium","plutonium","ICBM","missile test","enrichment","warhead"] },
   { key: "space", label: "Space Rocks", words: ["asteroid","meteor","comet","near-earth","impact","space rock"] },
-  { key: "misc", label: "Misc. Chaos", words: ["riot","explosion","crash","collapse","panic","emergency","evacuation","shooting","hostage","disaster"] },
+  { key: "misc", label: "Misc. Chaos", words: ["riot","explosion","crash","collapse","panic","emergency","evacuation","shooting","disaster"] },
 ];
 
 function normalize(s) {
@@ -109,14 +110,10 @@ function scoreArticles(articles) {
     }
   }
 
-  // Convert to a 0–100-ish doom score.
-  // Intentionally soft so it doesn't pin at 100 constantly.
   const raw = Object.values(bucketScores).reduce((sum, v) => sum + v, 0);
-  let doom = Math.round(Math.min(100, raw * 6)); // tweak multiplier for vibe
+  let doom = Math.round(Math.min(100, raw * 6));
   if (!Number.isFinite(doom)) doom = 0;
 
-  // Make buckets also 0–100 scale for bars.
-  // We'll scale relative to max bucket hit count so one category can dominate without breaking the layout.
   const maxBucket = Math.max(1, ...Object.values(bucketScores));
   const breakdown = BUCKETS.map((b) => {
     const v = bucketScores[b.key];
@@ -124,16 +121,15 @@ function scoreArticles(articles) {
     return { label: b.label, value: scaled, raw: v };
   });
 
-  // Top drivers: pick titles that contributed hits (very rough)
-  // We'll just take the first few.
   const drivers = articles.slice(0, 3).map((a) => ({
     title: a.title || "Untitled doom",
     url: a.url || "#",
     domain: a.domain || "",
     language: a.language || "",
+    sourcecountry: a.sourcecountry || "",
   }));
 
-  return { doom, breakdown, drivers, raw };
+  return { doom, breakdown, drivers };
 }
 
 function doomLabelFor(doom) {
@@ -161,7 +157,6 @@ function renderMain(doom) {
     fill.style.width = `${doom}%`;
   }
 
-  // Calm pill
   const calm = $("calmPill");
   if (calm) {
     calm.textContent = doom < 45 ? "OK" : doom < 80 ? "Hmm" : doom < 90 ? "Yikes" : "🔥";
@@ -230,78 +225,147 @@ function renderStories(articles) {
   const host = $("stories");
   if (!host) return;
   host.innerHTML = "";
-
-  for (const a of articles) {
-    host.appendChild(storyCard(a));
-  }
+  for (const a of articles) host.appendChild(storyCard(a));
 }
 
 function renderDrivers(drivers) {
   const host = $("drivers");
   if (!host) return;
   host.innerHTML = "";
+  for (const d of drivers) host.appendChild(storyCard(d));
+}
 
-  for (const d of drivers) {
-    host.appendChild(storyCard(d));
+// ---------- Fetch utilities ----------
+function buildCandidateUrls() {
+  const t = String(Date.now());
+
+  // Pattern A (most likely correct for your worker): only query is required
+  const a = `${PROXY_BASE}${ENDPOINT}?query=${encodeURIComponent(DEFAULT_QUERY)}&t=${t}`;
+
+  // Pattern B (expanded, but still simple)
+  const b = `${PROXY_BASE}${ENDPOINT}?query=${encodeURIComponent(DEFAULT_QUERY)}&maxrecords=${MAX_RECORDS}&timespan=${encodeURIComponent(TIME_SPAN)}&t=${t}`;
+
+  // Pattern C (the “ArtList” style — keep as fallback)
+  const c = `${PROXY_BASE}${ENDPOINT}?query=${encodeURIComponent(DEFAULT_QUERY)}&mode=ArtList&format=json&maxrecords=${MAX_RECORDS}&timespan=${encodeURIComponent(TIME_SPAN)}&t=${t}`;
+
+  return [a, b, c];
+}
+
+async function fetchWithTimeout(url) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+  try {
+    const res = await fetch(url, {
+      method: "GET",
+      signal: controller.signal,
+      cache: "no-store",
+    });
+
+    const text = await res.text(); // read as text first (prevents “json hangs” on bad content)
+    return { ok: res.ok, status: res.status, statusText: res.statusText, text, url };
+  } finally {
+    clearTimeout(timer);
   }
 }
 
-// ---------- Fetch ----------
-function buildUrl() {
-  const params = new URLSearchParams();
-  params.set("query", DEFAULT_QUERY);
-  params.set("mode", "ArtList");
-  params.set("format", "json");
-  params.set("maxrecords", String(MAX_RECORDS));
-  params.set("timespan", TIME_SPAN);
+function safeJsonParse(text) {
+  try {
+    return { json: JSON.parse(text), error: null };
+  } catch (e) {
+    return { json: null, error: String(e) };
+  }
+}
 
-  // cache buster
-  params.set("t", String(Date.now()));
-
-  return `${PROXY_BASE}${ENDPOINT}?${params.toString()}`;
+function extractArticles(payload) {
+  // Worker might return:
+  // 1) { articles: [...] }
+  // 2) { data: { articles: [...] } }
+  // 3) [...] (raw array)
+  if (Array.isArray(payload)) return payload;
+  if (payload && Array.isArray(payload.articles)) return payload.articles;
+  if (payload && payload.data && Array.isArray(payload.data.articles)) return payload.data.articles;
+  return null;
 }
 
 function filterEnglishUS(items) {
-  // Keep English; prefer United States but don't drop all if missing
   const english = items.filter((x) => normalize(x.language).includes("english"));
-
-  const us = english.filter((x) => normalize(x.sourcecountry).includes("united states") || normalize(x.sourcecountry).includes("usa"));
+  const us = english.filter((x) => {
+    const sc = normalize(x.sourcecountry);
+    return sc.includes("united states") || sc.includes("usa");
+  });
   return us.length ? us : english;
 }
 
+// ---------- Main refresh ----------
 async function refresh() {
+  // Reset UI so you can distinguish "loading" from "dead"
+  setText("doomNumber", "—");
+  setText("doomLabel", "—");
+  setText("samplePill", "Sample: — headlines");
   setStatus("Consulting the omens…");
 
-  const url = buildUrl();
+  const urls = buildCandidateUrls();
+  let lastErr = "";
 
-  try {
-    const res = await fetch(url, { method: "GET" });
-    const data = await res.json();
+  for (const url of urls) {
+    try {
+      const r = await fetchWithTimeout(url);
 
-    // Worker sometimes returns {articles:[...]} and sometimes errors
-    if (!data || !Array.isArray(data.articles)) {
-      console.log("Unexpected response:", data);
-      setStatus("The omens are… unclear.");
-      setText("samplePill", "Sample: 0 headlines");
-      return;
+      // If worker returns HTML (cloudflare error page etc), bail early with clear info
+      const trimmed = (r.text || "").trim();
+      const looksHtml = trimmed.startsWith("<!doctype") || trimmed.startsWith("<html") || trimmed.startsWith("<");
+      if (looksHtml) {
+        lastErr = `Proxy returned HTML (not JSON) from ${new URL(url).pathname}`;
+        continue;
+      }
+
+      const { json, error } = safeJsonParse(r.text);
+      if (!json || error) {
+        lastErr = `JSON parse failed (${error})`;
+        continue;
+      }
+
+      const articlesRaw = extractArticles(json);
+      if (!articlesRaw) {
+        // Worker might be returning its "Not found" JSON shape
+        if (json.error && json.routes) {
+          lastErr = `Worker says: ${json.error}. Routes: ${json.routes.join(", ")}`;
+        } else {
+          lastErr = `No "articles" array found in response.`;
+        }
+        continue;
+      }
+
+      const filtered = filterEnglishUS(articlesRaw);
+      setText("samplePill", `Sample: ${filtered.length} headlines`);
+
+      if (!filtered.length) {
+        setStatus("Omens consulted. (No English headlines found.)");
+        setUpdatedStamp(new Date());
+        return;
+      }
+
+      const { doom, breakdown, drivers } = scoreArticles(filtered);
+
+      renderMain(doom);
+      renderBreakdown(breakdown);
+      renderDrivers(drivers);
+      renderStories(filtered);
+
+      setUpdatedStamp(new Date());
+      setStatus("Omens consulted.");
+      return; // success
+    } catch (e) {
+      // AbortError / network / CORS etc
+      lastErr = String(e);
+      continue;
     }
-
-    const filtered = filterEnglishUS(data.articles);
-    setText("samplePill", `Sample: ${filtered.length} headlines`);
-
-    const { doom, breakdown, drivers } = scoreArticles(filtered);
-
-    renderMain(doom);
-    renderBreakdown(breakdown);
-    renderDrivers(drivers);
-    renderStories(filtered);
-
-    setUpdatedStamp(new Date());
-    setStatus("Omens consulted.");
-  } catch (err) {
-    console.error(err);
-    setStatus("The omens are… unclear.");
   }
+
+  // If we got here, all URL patterns failed
+  setText("samplePill", "Sample: 0 headlines");
+  setStatus(`The omens are… unclear. (${lastErr || "unknown failure"})`);
 }
 
 // ---------- Init ----------
@@ -312,7 +376,6 @@ function init() {
   const r = $("refreshBtn");
   if (r) r.addEventListener("click", refresh);
 
-  // first load
   refresh();
 }
 
