@@ -270,3 +270,12 @@ button.ghost{
   50%{ filter: drop-shadow(0 0 16px rgba(255,120,40,.65)); }
   100%{ filter: drop-shadow(0 0 8px rgba(255,120,40,.35)); }
 }
+/* Kill mobile tap/selection purple overlays */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+
+::selection {
+  background: rgba(255,255,255,.12);
+}
