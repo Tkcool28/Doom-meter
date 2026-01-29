@@ -139,7 +139,52 @@ function normalizeArticle(a) {
 }
 
 // IMPORTANT: do NOT delete most results just because fields are missing.
-function filterEnglishUS(list) {
+function looksEnglishByText(title) {
+  const t = safeStr(title);
+  if (!t) return false;
+
+  // Count basic Latin letters vs non-latin characters
+  let latin = 0, other = 0;
+  for (const ch of t) {
+    const code = ch.charCodeAt(0);
+    // A–Z, a–z
+    if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) latin++;
+    // ignore spaces/punct/digits
+    else if (
+      (code >= 48 && code <= 57) ||
+      code === 32 || code === 9 ||
+      (code >= 33 && code <= 47) ||
+      (code >= 58 && code <= 64) ||
+      (code >= 91 && code <= 96) ||
+      (code >= 123 && code <= 126)
+    ) {
+      // ignore
+    } else {
+      other++;
+    }
+  }
+
+  const total = latin + other;
+  if (total === 0) return false;
+
+  // If it’s mostly Latin letters, call it “English enough”
+  return latin / total >= 0.6;
+}
+
+function filterEnglishOnly(list) {
+  return list.filter((raw) => {
+    const a = normalizeArticle(raw);
+    const lang = a.language.toLowerCase();
+
+    // If language is provided, enforce English.
+    if (lang) {
+      return lang.includes("en") || lang.includes("english");
+    }
+
+    // If language is missing, guess from title text.
+    return looksEnglishByText(a.title);
+  });
+}
   return list.filter((raw) => {
     const a = normalizeArticle(raw);
     const lang = a.language.toLowerCase();
