@@ -1,189 +1,140 @@
 /* Doomroom News — app.js (v3.1.5)
-   Changes:
-   - Enforce English-only (global) with a safe fallback
-   - If language metadata is missing, use a light title-based heuristic
-   - Update UI pill text in index.html separately
+   Fixes:
+   - Null-safe DOM writes (no more textContent-of-null crashes)
+   - About overlay ALWAYS closes (both buttons + tap backdrop)
+   - Filter label = English / Global
+   - Stronger "English-only" filtering (heuristic, not perfect but effective)
 */
 
 const VERSION = "v3.1.5";
 
-// ✅ your worker
+// Your worker (keep as-is)
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
-const ROUTE = "/gdel";
+const ROUTE = "gdeit";
 
-// Query defaults
+// Content knobs
 const DEFAULT_QUERY = "world";
 const MAX_RECORDS = 25;
-const TIMESPA N = "2d"; // keep your recency window
+const TIMESPAN = "7d"; // wider net so you actually get "today"
 
-// Doom scoring configuration
+// Doom categories (same vibe as before)
 const CATEGORY_MAX = 30;
 const CATS = [
   { key: "conflict", label: "Conflict Heat", keywords: ["war","strike","attack","missile","drone","airstrike","invasion","ceasefire","shelling","hostage","terror","bomb","blast"] },
-  { key: "climate",  label: "Climate Weirdness", keywords: ["heat","wildfire","flood","hurricane","cyclone","storm","drought","record heat","evacuation","blaze","tornado","smoke"] },
-  { key: "econ",     label: "Economic Drama", keywords: ["recession","inflation","layoffs","bank","rate","crash","default","debt","tariff","shutdown","market"] },
-  { key: "democracy",label: "Democracy Melting", keywords: ["election","coup","protest","riot","authoritarian","fraud","ban","court","impeach","corruption","arrested","martial law"] },
-  { key: "cyber",    label: "Cyber Chaos", keywords: ["hack","breach","ransomware","outage","leak","cyber","malware","phishing","ddos"] },
-  { key: "space",    label: "Space Rocks", keywords: ["asteroid","meteor","comet","space debris","nasa","impact","near-earth","solar flare"] },
-  { key: "misc",     label: "Misc. Chaos", keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] },
+  { key: "climate", label: "Climate Weirdness", keywords: ["heat","wildfire","flood","hurricane","cyclone","storm","drought","record heat","evacuation","blaze","tornado","smoke"] },
+  { key: "econ", label: "Economic Drama", keywords: ["inflation","layoff","crash","default","debt","tariff","shutdown","market","bank","recession","strike"] },
+  { key: "democracy", label: "Democracy Melting", keywords: ["election","coup","protest","riot","authoritarian","fraud","ban","court","impeach","corruption","arrested","martial law"] },
+  { key: "cyber", label: "Cyber Chaos", keywords: ["hack","breach","ransomware","outage","leak","cyber","malware","phishing","ddos"] },
+  { key: "nuclear", label: "Unranium", keywords: ["nuclear","uranium","warhead","enrichment","icbm","radiation","reactor"] },
+  { key: "space", label: "Space Rocks", keywords: ["asteroid","meteor","comet","space debris","nasa","impact","near-earth","solar flare"] },
+  { key: "misc", label: "Misc. Chaos", keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] }
 ];
 
-const $ = (id) => document.getElementById(id);
+// ---------- DOM helpers ----------
+const S = (id) => document.getElementById(id);
 
 const el = {
-  refresh: $("btnRefresh"),
-  about: $("btnAbout"),
-  status: $("statusPill"),
-  updated: $("updatedPill"),
-  doomNum: $("doomNum"),
-  doomLabel: $("doomLabel"),
-  doomTag: $("doomTag"),
-  doomFill: $("doomFill"),
-  sample: $("samplePill"),
-  ok: $("okPill"),
-  breakdown: $("breakdown"),
-  drivers: $("drivers"),
-  stories: $("stories"),
-  ver: $("verText"),
-  filter: $("filterPill"),
-  aboutOverlay: $("aboutOverlay"),
-  closeAbout: $("btnCloseAbout"),
-  closeAbout2: $("btnCloseAbout2"),
-  aboutVersion: $("aboutVersion"),
+  refresh: S("btnRefresh"),
+  about: S("btnAbout"),
+  status: S("statusPill"),
+  updated: S("updatedPill"),
+  doomNum: S("doomNum"),
+  doomLabel: S("doomLabel"),
+  doomTag: S("doomTag"),
+  doomFill: S("doomFill"),
+  sample: S("samplePill"),
+  okPill: S("okPill"),
+  filterPill: S("filterPill"),
+  breakdown: S("breakdown"),
+  drivers: S("drivers"),
+  stories: S("stories"),
+  ver: S("verText"),
+
+  aboutOverlay: S("aboutOverlay"),
+  closeAbout: S("btnCloseAbout"),
+  closeAbout2: S("btnCloseAbout2"),
+  aboutVersion: S("aboutVersion")
 };
 
-function safeStr(v) {
-  return (v === null || v === undefined) ? "" : String(v);
+function safeText(node, txt) {
+  if (!node) return;
+  node.textContent = String(txt ?? "");
 }
 
-function setStatus(msg) {
-  if (el.status) el.status.textContent = msg;
+function safeHTML(node, html) {
+  if (!node) return;
+  node.innerHTML = html;
 }
 
-function setUpdated(dateStr) {
-  if (el.updated) el.updated.textContent = dateStr ? `Updated: ${dateStr}` : "Updated: —";
-}
-
-function clamp01(n) {
-  const x = Number(n);
-  if (!Number.isFinite(x)) return 0;
-  return Math.max(0, Math.min(1, x));
-}
-
-function labelFromIndex(idx) {
-  if (idx >= 90) return "On fire.";
-  if (idx >= 80) return "Bad vibes.";
-  if (idx >= 50) return "Spicy.";
-  if (idx >= 25) return "Uneasy.";
-  return "Chill (suspiciously).";
-}
-
-function fillClassFromPct(p) {
-  if (p > 90) return "fire";
-  if (p >= 80) return "red";
-  if (p >= 35) return "yellow";
-  return "";
-}
-
-function normalizeArticle(raw) {
-  const title = safeStr(raw.title || raw.name || raw.headline).trim();
-  const url = safeStr(raw.url || raw.link).trim();
-
-  // Some feeds use "source" object, others string
-  let source = "";
-  if (raw.source) {
-    source = typeof raw.source === "string" ? raw.source : safeStr(raw.source.name || raw.source.title);
-  } else {
-    source = safeStr(raw.site || raw.publisher);
+function nowStamp() {
+  try {
+    return new Date().toLocaleString();
+  } catch {
+    return String(new Date());
   }
+}
 
-  const language = safeStr(raw.language || raw.lang || raw.locale || "").trim();
+// ---------- About overlay ----------
+function showAbout() {
+  if (!el.aboutOverlay) return;
+  el.aboutOverlay.classList.remove("hidden");
+}
 
-  // Published date varies wildly by feed
-  const publishedAt =
-    safeStr(raw.publishedAt || raw.pubDate || raw.date || raw.published || raw.updated || "").trim();
+function hideAbout() {
+  if (!el.aboutOverlay) return;
+  el.aboutOverlay.classList.add("hidden");
+}
 
-  return {
-    title,
-    url,
-    source: source.trim(),
-    language,
-    publishedAt,
-    raw,
-  };
+function wireAbout() {
+  if (el.about) el.about.addEventListener("click", showAbout);
+
+  if (el.closeAbout) el.closeAbout.addEventListener("click", hideAbout);
+  if (el.closeAbout2) el.closeAbout2.addEventListener("click", hideAbout);
+
+  // Tap backdrop closes too
+  if (el.aboutOverlay) {
+    el.aboutOverlay.addEventListener("click", (e) => {
+      if (e.target === el.aboutOverlay) hideAbout();
+    });
+  }
+}
+
+// ---------- English-only heuristic ----------
+const NON_LATIN = /[\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0900-\u097F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/;
+const EN_HINT = /\b(the|and|to|of|in|for|on|with|from|at|as|by|after|amid|says|new|report|reports)\b/i;
+
+function isEnglishish(title) {
+  if (!title) return false;
+  const t = String(title).trim();
+  if (!t) return false;
+  if (NON_LATIN.test(t)) return false;
+  // Require at least one common English hint word
+  if (!EN_HINT.test(t)) return false;
+  return true;
 }
 
 function dedupeArticles(list) {
   const seen = new Set();
   const out = [];
-  for (const raw of list) {
-    const a = normalizeArticle(raw);
-    const key = a.url ? `u:${a.url}` : `t:${a.title.toLowerCase()}`;
-    if (!a.title) continue;
-    if (seen.has(key)) continue;
+  for (const a of list || []) {
+    const url = (a?.url || a?.link || "").trim();
+    const title = String(a?.title || "").trim();
+    const key = url ? `u:${url}` : `t:${title.toLowerCase()}`;
+    if (!key || seen.has(key)) continue;
     seen.add(key);
-    out.push(a);
+    out.push({
+      title,
+      url,
+      source: String(a?.source || a?.publisher || a?.domain || a?.site || "").trim(),
+      time: String(a?.time || a?.publishedAt || a?.published || "").trim()
+    });
   }
   return out;
 }
 
-/* --- English filter: strong + safe --- */
-
-function looksEnglishByText(title) {
-  const t = safeStr(title);
-  if (!t) return false;
-
-  let latin = 0, other = 0;
-
-  for (const ch of t) {
-    const code = ch.charCodeAt(0);
-
-    // A–Z a–z
-    if ((code >= 65 && code <= 90) || (code >= 97 && code <= 122)) {
-      latin++;
-      continue;
-    }
-
-    // Ignore digits, whitespace, punctuation/basic ASCII symbols
-    const isIgnorable =
-      (code >= 48 && code <= 57) || // 0-9
-      code === 32 || code === 9 ||  // space/tab
-      (code >= 33 && code <= 47) ||
-      (code >= 58 && code <= 64) ||
-      (code >= 91 && code <= 96) ||
-      (code >= 123 && code <= 126);
-
-    if (isIgnorable) continue;
-
-    // Anything else is "other" (CJK, Cyrillic, etc.)
-    other++;
-  }
-
-  const total = latin + other;
-  if (total === 0) return false;
-
-  // If it’s mostly Latin letters, call it “English enough”
-  return latin / total >= 0.6;
-}
-
-function filterEnglishOnly(list) {
-  return list.filter((a) => {
-    const lang = safeStr(a.language).toLowerCase();
-
-    // If language is provided, enforce English.
-    if (lang) {
-      return lang.includes("en") || lang.includes("english");
-    }
-
-    // If language missing, guess from title.
-    return looksEnglishByText(a.title);
-  });
-}
-
-/* --- Doom scoring --- */
-
+// ---------- Doom scoring ----------
 function scoreHeadline(title) {
-  const t = safeStr(title).toLowerCase();
+  const t = String(title || "").toLowerCase();
   const scores = {};
   for (const c of CATS) scores[c.key] = 0;
 
@@ -191,96 +142,113 @@ function scoreHeadline(title) {
     for (const kw of c.keywords) {
       if (t.includes(kw)) scores[c.key] += 3;
     }
-    // cap per-category so one headline doesn't nuke the meter
     scores[c.key] = Math.min(scores[c.key], 12);
   }
   return scores;
 }
 
-function computeDoomIndex(articles) {
-  const totals = {};
-  for (const c of CATS) totals[c.key] = 0;
-
-  for (const a of articles) {
-    const s = scoreHeadline(a.title);
-    for (const k in s) totals[k] += s[k];
-  }
-
-  // normalize to 0..100 based on CATEGORY_MAX
-  const sum = Object.values(totals).reduce((acc, v) => acc + v, 0);
-  const idx = Math.max(0, Math.min(100, Math.round((sum / CATEGORY_MAX) * 100)));
-
-  return { idx, totals };
+function pctFromScore(score) {
+  return Math.max(0, Math.min(100, Math.round((score / CATEGORY_MAX) * 100)));
 }
 
-/* --- Render --- */
+function classFromPct(p) {
+  if (p > 90) return "fire";
+  if (p >= 80) return "red";
+  if (p >= 35) return "yellow";
+  return "green";
+}
 
-function renderBreakdown(totals) {
+function labelFromPct(p) {
+  if (p > 90) return "On fire.";
+  if (p >= 80) return "Bad vibes.";
+  if (p >= 50) return "Spicy.";
+  if (p >= 25) return "Uneasy.";
+  return "Chill (suspiciously).";
+}
+
+// ---------- Fetch ----------
+async function fetchViaWorker(query) {
+  const q = encodeURIComponent(query);
+  const max = encodeURIComponent(String(MAX_RECORDS));
+  const span = encodeURIComponent(TIMESPAN);
+
+  // IMPORTANT: we ask worker for lang=en and NO country restriction (global)
+  const urls = [
+    `${PROXY_BASE}/${ROUTE}?query=${q}&max=${max}&timespan=${span}&lang=en`,
+    `${PROXY_BASE}/${ROUTE}?q=${q}&max=${max}&timespan=${span}&lang=en`,
+    `${PROXY_BASE}/${ROUTE}?g=${q}&max=${max}&timespan=${span}&lang=en`
+  ];
+
+  let lastErr = null;
+  for (const u of urls) {
+    try {
+      const res = await fetch(u, { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      return data;
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr || new Error("Worker fetch failed");
+}
+
+// ---------- Render ----------
+function setStatus(msg) { safeText(el.status, msg); }
+function setUpdated(msg) { safeText(el.updated, `Updated: ${msg}`); }
+
+function renderBars(catTotals) {
   if (!el.breakdown) return;
-  el.breakdown.innerHTML = "";
 
-  for (const c of CATS) {
-    const v = totals[c.key] || 0;
+  const rows = CATS.map(c => {
+    const val = catTotals[c.key] || 0;
+    const pct = pctFromScore(val);
+    const cls = classFromPct(pct);
+    return `
+      <div class="barRow">
+        <div class="barLabel">${c.label}</div>
+        <div class="barTrack"><div class="barFill ${cls}" style="width:${pct}%"></div></div>
+        <div class="barNum">${val}</div>
+      </div>
+    `;
+  }).join("");
 
-    const row = document.createElement("div");
-    row.className = "breakRow";
-
-    const label = document.createElement("div");
-    label.className = "breakLabel";
-    label.textContent = c.label;
-
-    const meter = document.createElement("div");
-    meter.className = "miniMeter";
-
-    const fill = document.createElement("div");
-    fill.className = "fill";
-    fill.style.width = `${Math.min(100, Math.round((v / 12) * 100))}%`;
-
-    meter.appendChild(fill);
-
-    const num = document.createElement("div");
-    num.className = "breakNum";
-    num.textContent = String(v);
-
-    row.appendChild(label);
-    row.appendChild(meter);
-    row.appendChild(num);
-
-    el.breakdown.appendChild(row);
-  }
+  safeHTML(el.breakdown, rows);
 }
 
-function renderDrivers(articles) {
+function renderDrivers(topDrivers) {
   if (!el.drivers) return;
+  if (!topDrivers.length) {
+    safeHTML(el.drivers, `<div class="muted">No obvious drivers. Reality is being unusually polite.</div>`);
+    return;
+  }
+  safeHTML(el.drivers, topDrivers.map(s => `<div class="pill">${s}</div>`).join(""));
+}
 
-  // pick top 3 “spikiest” headlines by sum of keyword hits
-  const scored = articles.map((a) => {
-    const s = scoreHeadline(a.title);
-    const sum = Object.values(s).reduce((acc, v) => acc + v, 0);
-    return { a, sum };
-  }).sort((x, y) => y.sum - x.sum);
-
-  const top = scored.filter(x => x.sum > 0).slice(0, 3);
-
-  if (!top.length) {
-    el.drivers.innerHTML = `
-      <div class="smallCard">
-        <div class="smallTitle">No clear drivers.</div>
-        <div class="muted">The omens refuse to elaborate.</div>
-      </div>`;
+function renderStories(items) {
+  if (!el.stories) return;
+  if (!items.length) {
+    safeHTML(el.stories, `<div class="muted">No stories found. The void is quiet today.</div>`);
     return;
   }
 
-  el.drivers.innerHTML = top.map(({ a }) => `
-    <div class="smallCard">
-      <div class="smallTitle">${escapeHtml(a.title)}</div>
-      <div class="muted">${escapeHtml(a.source || "unknown source")}</div>
-    </div>
-  `).join("");
+  const cards = items.map(a => {
+    const source = a.source ? a.source : "source unknown";
+    const title = a.title || "(untitled)";
+    const url = a.url || "#";
+    return `
+      <a class="storyCard" href="${url}" target="_blank" rel="noopener noreferrer">
+        <div class="storyTitle">${escapeHtml(title)}</div>
+        <div class="storyMeta muted">${escapeHtml(source)} • English • Global</div>
+      </a>
+    `;
+  }).join("");
+
+  safeHTML(el.stories, cards);
 }
 
 function escapeHtml(s) {
-  return safeStr(s)
+  return String(s || "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -288,100 +256,99 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
-function renderStories(articles) {
-  if (!el.stories) return;
+// ---------- Main pipeline ----------
+async function run(query = DEFAULT_QUERY) {
+  setStatus("Reading the omens…");
+  safeText(el.sample, "Sample: —");
 
-  el.stories.innerHTML = articles.slice(0, 12).map((a) => `
-    <a class="storyCard" href="${escapeHtml(a.url || "#")}" target="_blank" rel="noopener noreferrer">
-      <div class="storyTitle">${escapeHtml(a.title)}</div>
-      <div class="storyMeta">${escapeHtml(a.source || "unknown")} • English • Global</div>
-    </a>
-  `).join("");
-}
-
-/* --- Fetch --- */
-
-async function fetchNews() {
-  const url = `${PROXY_BASE}${ROUTE}?q=${encodeURIComponent(DEFAULT_QUERY)}&n=${encodeURIComponent(MAX_RECORDS)}&t=${encodeURIComponent(TIMESPA N)}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`news fetch failed: ${res.status}`);
-
-  const data = await res.json();
-
-  // your worker might return { articles: [...] } or just [...]
-  const list = Array.isArray(data) ? data : (data.articles || data.items || []);
-  if (!Array.isArray(list)) return [];
-
-  return list;
-}
-
-/* --- Main refresh --- */
-
-async function refresh() {
   try {
-    setStatus("The omens are... readable.");
-    if (el.ok) el.ok.textContent = "OK";
+    const data = await fetchViaWorker(query);
 
-    const raw = await fetchNews();
-    const deduped = dedupeArticles(raw);
+    // Worker might return { articles: [...] } OR raw [...]
+    const rawList = Array.isArray(data) ? data : (data.articles || data.items || data.results || []);
+    let list = dedupeArticles(rawList);
 
-    // ✅ English-only (global)
-    const filtered = filterEnglishOnly(deduped);
+    // English-only filter (global)
+    list = list.filter(a => isEnglishish(a.title));
 
-    // Keep English-only if we have any; otherwise fall back so app doesn't look dead.
-    const usable = filtered.length ? filtered : deduped;
+    safeText(el.filterPill, "Filter: English / Global");
+    safeText(el.sample, `Sample: ${list.length} headlines`);
 
-    const { idx, totals } = computeDoomIndex(usable);
+    // Score doom
+    const totals = {};
+    for (const c of CATS) totals[c.key] = 0;
 
-    if (el.doomNum) el.doomNum.textContent = String(idx);
-    if (el.doomLabel) el.doomLabel.textContent = labelFromIndex(idx);
+    const keywordHits = [];
+    for (const a of list) {
+      const scores = scoreHeadline(a.title);
+      for (const c of CATS) totals[c.key] += scores[c.key];
 
-    // fill meter
-    const pct = clamp01(idx / 100) * 100;
-    if (el.doomFill) {
-      el.doomFill.style.width = `${pct}%`;
-      el.doomFill.className = `fill ${fillClassFromPct(idx)}`;
+      // quick driver collection
+      const t = (a.title || "").toLowerCase();
+      for (const c of CATS) {
+        for (const kw of c.keywords) {
+          if (t.includes(kw)) keywordHits.push(kw);
+        }
+      }
     }
 
-    renderBreakdown(totals);
-    renderDrivers(usable);
-    renderStories(usable);
+    // Total doom
+    const doomScore = Object.values(totals).reduce((s, n) => s + n, 0);
+    const doomPct = pctFromScore(doomScore);
+    const doomCls = classFromPct(doomPct);
+    const doomLabel = labelFromPct(doomPct);
 
-    // sample + timestamps
-    if (el.sample) el.sample.textContent = `Sample: ${usable.length} headlines`;
-    setUpdated(new Date().toLocaleString());
+    safeText(el.doomNum, String(doomPct));
+    safeText(el.doomLabel, doomLabel);
+    safeText(el.doomTag, "Take a breath. The universe is weird.");
+    if (el.doomFill) {
+      el.doomFill.className = `fill ${doomCls}`;
+      el.doomFill.style.width = `${doomPct}%`;
+    }
+
+    // breakdown bars
+    renderBars(totals);
+
+    // top drivers
+    const driverCounts = {};
+    for (const k of keywordHits) driverCounts[k] = (driverCounts[k] || 0) + 1;
+    const topDrivers = Object.entries(driverCounts)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([k]) => k);
+
+    renderDrivers(topDrivers);
+
+    // stories
+    renderStories(list.slice(0, 12));
+
+    setStatus("The omens are… readable.");
+    setUpdated(nowStamp());
+    safeText(el.okPill, "OK");
 
   } catch (err) {
+    setStatus("Omen failure. Try refresh.");
+    setUpdated(nowStamp());
+    safeText(el.okPill, "OK");
+    safeText(el.sample, "Sample: 0 headlines");
+    renderStories([]);
+    // keep console help for future debugging
     console.error(err);
-    setStatus("The omens are... unavailable.");
-    if (el.sample) el.sample.textContent = "Sample: 0 headlines";
   }
 }
 
-/* --- About modal --- */
-
-function openAbout() {
-  if (!el.aboutOverlay) return;
-  el.aboutOverlay.classList.add("show");
-  if (el.aboutVersion) el.aboutVersion.textContent = `${VERSION} • DoomWorks Interstellar`;
+function wireRefresh() {
+  if (el.refresh) el.refresh.addEventListener("click", () => run(DEFAULT_QUERY));
 }
 
-function closeAbout() {
-  if (!el.aboutOverlay) return;
-  el.aboutOverlay.classList.remove("show");
-}
+// ---------- Boot ----------
+window.addEventListener("DOMContentLoaded", () => {
+  safeText(el.ver, VERSION);
+  safeText(el.aboutVersion, VERSION);
 
-/* --- Boot --- */
+  wireAbout();
+  wireRefresh();
 
-function boot() {
-  if (el.ver) el.ver.textContent = VERSION;
-
-  if (el.refresh) el.refresh.addEventListener("click", refresh);
-  if (el.about) el.about.addEventListener("click", openAbout);
-  if (el.closeAbout) el.closeAbout.addEventListener("click", closeAbout);
-  if (el.closeAbout2) el.closeAbout2.addEventListener("click", closeAbout);
-
-  refresh();
-}
-
-document.addEventListener("DOMContentLoaded", boot);
+  // first run
+  run(DEFAULT_QUERY);
+});
