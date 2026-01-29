@@ -1,4 +1,29 @@
-/* Doomroom News — app.js (v3.1.4)
+// --- Doomroom emergency crash overlay (temporary) ---
+(function () {
+  const root = document.getElementById("app");
+  if (root) {
+    root.innerHTML = `
+      <div style="padding:16px;color:#e9eef6;font-family:system-ui">
+        <div style="font-size:18px;font-weight:700">Booting Doomroom…</div>
+        <div style="opacity:.75;margin-top:6px">If it crashes, the error will show here.</div>
+      </div>`;
+  }
+
+  window.addEventListener("error", (e) => {
+    if (!root) return;
+    root.innerHTML = `<pre style="white-space:pre-wrap;padding:16px;color:#ffd5d5;font-family:ui-monospace,monospace">
+JS Error: ${e.message}
+${e.filename}:${e.lineno}:${e.colno}
+</pre>`;
+  });
+
+  window.addEventListener("unhandledrejection", (e) => {
+    if (!root) return;
+    root.innerHTML = `<pre style="white-space:pre-wrap;padding:16px;color:#ffd5d5;font-family:ui-monospace,monospace">
+Promise Rejection: ${String(e.reason || e)}
+</pre>`;
+  });
+})();/* Doomroom News — app.js (v3.1.4)
    Fixes:
    - Mobile-friendly breakdown (CSS handles layout)
    - Request more articles + longer span
