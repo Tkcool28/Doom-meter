@@ -279,3 +279,8 @@ button.ghost{
 ::selection {
   background: rgba(255,255,255,.12);
 }
+/* Prevent weird GPU layer banding on some Android builds */
+.card, .hero, .bTrack, .meterTrack {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+}
