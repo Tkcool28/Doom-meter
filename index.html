@@ -344,5 +344,11 @@
   </div>
 
   <script defer src="./app.js"></script>
-</body>
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js', { scope: './' }).catch(console.error);
+    });
+  }
+</script> </body>
 </html>
