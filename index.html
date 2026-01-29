@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Doomroom News</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="kicker">GLOBAL BRIEFING</div>
+      <h1 class="title">Doomroom News</h1>
+      <div class="subtitle">Doom Index (Highly Scientific)</div>
+
+      <div class="actions">
+        <button id="refreshBtn" class="btn btn_primary">Refresh</button>
+        <button id="aboutBtn" class="btn">About</button>
+      </div>
+
+      <div id="statusLine" class="status"></div>
+      <pre id="errorBox" class="error hidden"></pre>
+    </header>
+
+    <main class="main">
+      <section class="card card_big">
+        <div class="doom_top">
+          <div class="doom_value" id="doomValue">—</div>
+          <div class="doom_label" id="doomLabel">Loading…</div>
+        </div>
+
+        <div class="meter">
+          <div class="meter_fill" id="meterFill"></div>
+        </div>
+
+        <div class="updated" id="updatedAt"></div>
+
+        <div class="section_head">DOOM BREAKDOWN</div>
+        <div id="breakdownList" class="breakdown"></div>
+
+        <div class="section_head">TOP DRIVERS</div>
+        <div id="driversList" class="drivers"></div>
+
+        <div class="section_head">LATEST STORIES</div>
+        <div id="storiesList" class="stories"></div>
+      </section>
+
+      <section class="card" id="aboutSection">
+        <div class="section_head">SETTINGS &amp; ABOUT</div>
+        <p>
+          This app is satire. It uses real news headlines as inputs and turns them into a comedic “Doom Index.”
+          It is not a forecast, prophecy, or financial advice from the universe.
+        </p>
+        <p class="muted">
+          Sources: GDELT (DOC API) via Cloudflare Worker proxy. Displayed headlines link to original publishers.
+        </p>
+        <p class="muted">
+          Build: <span id="versionLine">—</span>
+        </p>
+      </section>
+    </main>
+  </div>
+
+  <!-- Modal -->
+  <div id="modalBackdrop" class="modal_backdrop hidden"></div>
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal_header">
+      <div id="modalTitle" class="modal_title"></div>
+      <button id="closeModal" class="modal_close" aria-label="Close">✕</button>
+    </div>
+    <div id="modalBody" class="modal_body"></div>
+    <div class="modal_actions">
+      <a id="modalLink" class="btn btn_primary" target="_blank" rel="noopener noreferrer">Open article</a>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
