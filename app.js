@@ -1,7 +1,7 @@
 /* app.js — Doomroom News (GitHub Pages) */
-const VERSION = "v3.0.4";
+const VERSION = "v3.0.5";
 
-// ✅ MUST match your working worker base
+// ✅ Your Worker base
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
 
 // Helpers
@@ -22,14 +22,11 @@ function nowStamp() {
   return new Date().toLocaleString();
 }
 
-// Build the exact query shape your worker advertises in the error message
+// ✅ IMPORTANT: route is /gdelt (with a 't')
 function buildGdeltUrl(query) {
   const q = encodeURIComponent(query || "world");
-
-  // Worker example requires: mode=ArtList&format=json&maxrecords=50&timespan=1d
-  // You can tweak maxrecords/timespan later.
   return (
-    `${PROXY_BASE}/gdel` +
+    `${PROXY_BASE}/gdelt` +
     `?query=${q}` +
     `&mode=ArtList` +
     `&format=json` +
@@ -59,7 +56,7 @@ function safeJsonParse(txt) {
 }
 
 function normalizePayload(payload) {
-  // error-shape from your worker: { error, routes, example }
+  // Worker error shape: { error, routes, example }
   if (!payload || payload.error || payload.ok === false) {
     return {
       articles: [],
@@ -150,7 +147,6 @@ async function loadHeadlines(query = "world") {
   setStatus("Loading…");
 
   const url = buildGdeltUrl(query);
-  const dbgUrl = url; // keep for error display
 
   const res = await fetchText(url);
   const parsed = safeJsonParse(res.text);
@@ -160,7 +156,7 @@ async function loadHeadlines(query = "world") {
     showErrorBox(
       `No articles returned.\n` +
       `HTTP: ${res.status}\n` +
-      `Tried: ${dbgUrl}\n` +
+      `Tried: ${url}\n` +
       `Body preview: ${res.text.slice(0, 240)}`
     );
     renderStories([]);
@@ -177,7 +173,7 @@ async function loadHeadlines(query = "world") {
       (m.error ? `Error: ${m.error}\n` : "") +
       (m.routes ? `Routes: ${m.routes.join(", ")}\n` : "") +
       (m.example ? `Example: ${m.example}\n` : "") +
-      `Tried: ${dbgUrl}`
+      `Tried: ${url}`
     );
     renderStories([]);
     return;
@@ -204,7 +200,6 @@ function init() {
     });
   }
 
-  // Initial load
   loadHeadlines("world");
 }
 
