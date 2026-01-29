@@ -1,236 +1,326 @@
 :root{
   --bg:#0b0f17;
-  --panel: rgba(255,255,255,.04);
-  --panel2: rgba(255,255,255,.06);
+  --card: rgba(255,255,255,.04);
+  --card2: rgba(255,255,255,.06);
   --stroke: rgba(255,255,255,.10);
   --stroke2: rgba(255,255,255,.14);
-  --text:#e8edf6;
-  --muted: rgba(232,237,246,.70);
+  --text:#e7ecf6;
+  --muted: rgba(231,236,246,.72);
+  --muted2: rgba(231,236,246,.55);
 
-  --green:#22c55e;
-  --yellow:#fbbf24;
-  --red:#ef4444;
-  --fire1:#ff3b30;
-  --fire2:#ff9500;
+  --green:#2ecc71;
+  --yellow:#f1c40f;
+  --red:#ff4d4d;
+  --fire1:#ff7a18;
+  --fire2:#ff2d55;
 }
 
 *{ box-sizing:border-box; }
 html,body{ height:100%; }
 body{
   margin:0;
-  background: radial-gradient(1200px 600px at 20% 0%, rgba(120,120,255,.08), transparent 60%),
-              radial-gradient(900px 500px at 80% 20%, rgba(255,140,0,.06), transparent 60%),
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: radial-gradient(1200px 900px at 30% 0%, rgba(255,255,255,.06), transparent 55%),
+              radial-gradient(900px 700px at 90% 30%, rgba(255,255,255,.05), transparent 60%),
               var(--bg);
   color:var(--text);
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
 }
+
+a{ color: inherit; }
 
 .wrap{
-  max-width: 960px;
+  max-width: 980px;
   margin: 0 auto;
-  padding: 26px 18px 60px;
+  padding: 26px 16px 60px;
 }
 
-/* Top */
-.top{
-  display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  gap:16px;
-  margin-bottom: 16px;
-}
-.kicker{
-  letter-spacing:.22em;
-  text-transform:uppercase;
-  font-size:12px;
-  opacity:.7;
-}
 h1{
-  margin:6px 0 4px;
-  font-size:46px;
-  line-height:1.02;
+  margin:0;
+  font-size: 46px;
+  letter-spacing: -.02em;
+  line-height: 1.05;
 }
-.sub{ opacity:.75; font-size:18px; }
+.sub{
+  margin: 10px 0 18px;
+  color: var(--muted);
+  font-size: 15px;
+}
 
-.actions{ display:flex; gap:10px; align-items:center; }
-.btn{
-  background: rgba(255,255,255,.05);
-  border:1px solid var(--stroke);
+.row{
+  display:flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items:center;
+}
+
+button{
+  background: rgba(255,255,255,.06);
   color: var(--text);
+  border: 1px solid rgba(255,255,255,.12);
   padding: 10px 14px;
   border-radius: 999px;
-  cursor:pointer;
+  cursor: pointer;
 }
-.btn:hover{ border-color: var(--stroke2); }
-.btn.primary{
-  background: rgba(255,255,255,.10);
-}
+button:hover{ border-color: rgba(255,255,255,.22); }
 
-/* Cards */
-.card{
-  border: 1px solid rgba(255,255,255,.10);
-  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
-  border-radius: 22px;
-  padding: 18px;
-  box-shadow: 0 16px 40px rgba(0,0,0,.35);
-  margin-top: 14px;
-  overflow:hidden; /* kills “bleed” artifacts */
-}
-
-/* Hero */
-.hero{ padding: 18px; }
-.heroGrid{ display:block; }
-
-.doomBig{
-  font-size: 86px;
-  font-weight: 800;
-  letter-spacing:-.03em;
-  margin: 0 0 6px;
-}
-.doomLabel{
-  font-size: 26px;
-  font-weight: 700;
-  opacity:.92;
-  margin-bottom: 12px;
-}
-
-.doomTrack{
-  width:100%;
-  height: 14px;
-  background: rgba(255,255,255,.06);
-  border:1px solid rgba(255,255,255,.10);
-  border-radius: 999px;
-  overflow:hidden;
-}
-.doomFill{
-  height:100%;
-  width:0%;
-  border-radius: 999px;
-  background: var(--green);
-  box-shadow: 0 0 18px rgba(34,197,94,.22);
-}
-
-.metaRow{
-  display:flex;
-  flex-wrap:wrap;
-  gap:10px;
-  margin-top: 12px;
-}
 .pill{
   display:inline-flex;
   align-items:center;
   gap:8px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   border-radius: 999px;
-  border:1px solid rgba(255,255,255,.10);
+  border: 1px solid rgba(255,255,255,.12);
   background: rgba(255,255,255,.04);
+  color: var(--muted);
+  font-size: 13px;
 }
-.pill.muted{ color: var(--muted); }
-.muted{ color: var(--muted); }
+
+.card{
+  margin-top: 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+  box-shadow: 0 14px 40px rgba(0,0,0,.35);
+  padding: 18px;
+}
+
+.muted{ color: var(--muted2); }
+
+.bigNum{
+  font-size: 84px;
+  font-weight: 800;
+  letter-spacing: -.04em;
+  margin: 0;
+  line-height: .9;
+}
+.bigLabel{
+  font-size: 30px;
+  margin: 6px 0 10px;
+  font-weight: 750;
+  letter-spacing: -.01em;
+}
+
+.mainMeter{
+  height: 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.10);
+  overflow:hidden;
+}
+.mainMeter .fill{
+  height: 100%;
+  width: 0%;
+  border-radius: 999px;
+  min-width: 2px; /* prevents “dot” look at small values */
+}
 
 .sectionTitle{
-  letter-spacing:.22em;
-  text-transform:uppercase;
-  font-size:12px;
-  opacity:.65;
-  margin-bottom: 14px;
+  margin-top: 18px;
+  color: rgba(231,236,246,.55);
+  font-size: 12px;
+  letter-spacing: .28em;
 }
 
-/* Error */
-.errorBox{
-  border-color: rgba(255,70,70,.30);
-}
-.errTitle{
-  color: rgba(255,130,130,.95);
-  font-weight:800;
-  margin-bottom: 6px;
-}
-
-/* Meters */
-.meters{
+/* ===== Doom breakdown rows (label left, bar right) ===== */
+.breakdown{
   display:flex;
-  flex-direction:column;
+  flex-direction: column;
   gap: 12px;
+  margin-top: 12px;
 }
 
-/* This grid is the critical bit that prevents “pips” */
 .meterRow{
   display:grid;
-  grid-template-columns: 220px minmax(240px, 1fr) 52px;
+  grid-template-columns: 1fr minmax(160px, 320px) 44px;
+  gap: 12px;
   align-items:center;
-  gap: 14px;
 }
 
-.meterName{
-  font-size: 22px;
+.meterLabel{
+  font-size: 28px;
   font-weight: 800;
-  line-height:1.05;
+  letter-spacing: -.02em;
+  line-height: 1.0;
 }
 
 .meterTrack{
-  width:100%;
-  height: 16px;
+  height: 14px;
   border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.12);
   background: rgba(255,255,255,.06);
-  border:1px solid rgba(255,255,255,.10);
   overflow:hidden;
+  position: relative;
 }
 
 .meterFill{
-  height:100%;
-  width:0%;
+  height: 100%;
+  width: 0%;
   border-radius: 999px;
-  background: var(--green);
-  box-shadow: 0 0 18px rgba(34,197,94,.18);
+  min-width: 2px; /* prevents tiny values becoming circles */
 }
 
-.meterVal{
+.meterValue{
   text-align:right;
-  font-weight:800;
-  opacity:.9;
+  font-size: 20px;
+  font-weight: 800;
+  color: rgba(231,236,246,.82);
 }
 
-/* Stories */
-.stories, .drivers{
+/* Color classes (set by JS) */
+.cGreen{ background: var(--green); }
+.cYellow{ background: var(--yellow); }
+.cRed{ background: var(--red); }
+.cFire{
+  background: linear-gradient(90deg, var(--fire1), var(--fire2));
+  box-shadow: 0 0 18px rgba(255,45,85,.22), 0 0 30px rgba(255,122,24,.12);
+  animation: firePulse 1.3s ease-in-out infinite;
+}
+@keyframes firePulse{
+  0%,100%{ filter: saturate(1.0) brightness(1.0); }
+  50%{ filter: saturate(1.35) brightness(1.12); }
+}
+
+/* Stories list */
+.storyLink{
+  display:block;
+  text-decoration:none;
+  padding: 14px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.03);
+}
+.storyLink:hover{ border-color: rgba(255,255,255,.22); }
+.storyTitle{
+  font-size: 22px;
+  font-weight: 750;
+  letter-spacing: -.01em;
+  line-height: 1.15;
+}
+.storyMeta{
+  margin-top: 6px;
+  color: rgba(231,236,246,.60);
+  font-size: 13px;
+}
+
+/* ===== About modal ===== */
+.overlay{
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
   display:flex;
-  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  padding: 18px;
+  z-index: 9999;
+}
+.hidden{ display:none !important; }
+
+.modal{
+  width: min(520px, 92vw);
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.12);
+  background: linear-gradient(180deg, rgba(18,22,32,.98), rgba(13,16,24,.98));
+  box-shadow: 0 22px 70px rgba(0,0,0,.55);
+  padding: 16px;
+}
+
+.modalHeader{
+  display:flex;
+  justify-content: space-between;
+  align-items:center;
   gap: 12px;
 }
 
-.story{
-  display:block;
-  text-decoration:none;
-  color: var(--text);
-  border:1px solid rgba(255,255,255,.10);
+.brand{
+  display:flex;
+  align-items:center;
+  gap: 12px;
+}
+.doomLogo{
+  width: 38px; height: 38px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: rgba(255,255,255,.05);
+  position:relative;
+  overflow:hidden;
+}
+.doomLogo .eye{
+  position:absolute;
+  left: 7px; right: 7px; top: 13px; height: 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
+}
+.doomLogo .pupil{
+  position:absolute;
+  width: 8px; height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, var(--fire1), var(--fire2));
+  left: 15px; top: 15px;
+  box-shadow: 0 0 14px rgba(255,45,85,.25);
+}
+
+.brandName{ font-weight: 850; letter-spacing: -.01em; }
+.brandTag{ color: rgba(231,236,246,.60); font-size: 12px; margin-top: 2px; }
+
+.iconBtn{
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  padding: 0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+.modalTitle{
+  margin: 14px 0 10px;
+  font-size: 22px;
+  letter-spacing: -.01em;
+}
+
+.modalBody{ display:flex; flex-direction:column; gap: 10px; }
+
+.aboutRow{
+  display:flex;
+  justify-content: space-between;
+  align-items:center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.10);
   background: rgba(255,255,255,.03);
-  border-radius: 18px;
-  padding: 14px;
 }
-.story:hover{ border-color: rgba(255,255,255,.18); }
+.aboutLabel{ color: rgba(231,236,246,.70); }
+.aboutValue{ font-weight: 850; }
 
-.storyTitle{
-  font-size: 20px;
-  font-weight: 850;
-  line-height: 1.15;
-  margin-bottom: 8px;
+.aboutCard{
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,.10);
+  background: rgba(255,255,255,.03);
+  padding: 12px;
 }
-.storyMeta{
-  color: var(--muted);
-  font-size: 14px;
-}
+.aboutCard.subtle{ background: rgba(255,255,255,.02); }
+.aboutBig{ font-size: 16px; font-weight: 850; }
+.aboutSmall{ color: rgba(231,236,246,.70); font-size: 13px; margin-top: 6px; line-height: 1.35; }
 
-.foot{
-  margin-top: 18px;
-  text-align:left;
+.modalFooter{
+  display:flex;
+  justify-content:flex-end;
+  margin-top: 12px;
 }
+.btnPrimary{
+  background: rgba(255,255,255,.10);
+  border-color: rgba(255,255,255,.18);
+}
+.btnPrimary:hover{ border-color: rgba(255,255,255,.28); }
 
-/* Mobile tweaks */
-@media (max-width: 640px){
+/* Mobile tightening */
+@media (max-width: 520px){
   h1{ font-size: 40px; }
-  .doomBig{ font-size: 76px; }
   .meterRow{
-    grid-template-columns: 1fr; /* stack on small screens */
+    grid-template-columns: 1fr;
     gap: 8px;
   }
-  .meterVal{ text-align:left; }
+  .meterValue{ text-align:left; }
+  .meterLabel{ font-size: 26px; }
 }
