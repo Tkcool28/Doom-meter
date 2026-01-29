@@ -3,45 +3,115 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
+  <meta name="theme-color" content="#0b0f17" />
 
   <title>Doomroom News</title>
-  <meta name="theme-color" content="#0b0f17" />
 
   <!-- PWA -->
   <link rel="manifest" href="./manifest.webmanifest" />
-  <meta name="apple-mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Doomroom" />
-
-  <!-- Icons (ALL RELATIVE!) -->
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
   <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png" />
-  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
 
-  <!-- Styles -->
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
-  <!-- App Root -->
-  <div id="app" class="page">
-    <noscript>This app needs JavaScript to read the omens.</noscript>
+  <div class="wrap">
+
+    <div class="sectionTitle">GLOBAL BRIEFING</div>
+    <h1>Doomroom News</h1>
+    <div class="sub">Doom Index (Highly Scientific)</div>
+
+    <div class="row" style="margin-top:10px;">
+      <button id="btnRefresh">Refresh</button>
+      <button id="btnAbout">About</button>
+    </div>
+
+    <div class="row" style="margin-top:10px;">
+      <div class="pill" id="statusPill">Conferring with the omens…</div>
+      <div class="pill" id="updatedPill">Updated: —</div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="justify-content:space-between; align-items:flex-end;">
+        <div class="bigNum" id="doomNum">—</div>
+        <div style="text-align:right; max-width:60%;">
+          <div class="bigLabel" id="doomLabel">Loading…</div>
+          <div class="muted" id="doomTag" style="margin-top:6px;">Take a breath. The universe is weird.</div>
+        </div>
+      </div>
+
+      <div class="mainMeter" style="margin-top:14px;">
+        <div class="fill" id="doomFill"></div>
+      </div>
+
+      <div class="row" style="margin-top:14px;">
+        <div class="pill" id="okPill">On. I’m calm’ish.</div>
+        <div class="pill" id="filterPill">Filter: English / United States</div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <div class="pill" id="samplePill">Sample: — headlines</div>
+      </div>
+
+      <div class="sectionTitle" style="margin-top:14px;">DOOM BREAKDOWN</div>
+      <div id="breakdown"></div>
+
+      <div class="sectionTitle" style="margin-top:14px;">TOP DRIVERS</div>
+      <div id="drivers"></div>
+    </div>
+
+    <div class="card">
+      <div class="sectionTitle">LATEST STORIES</div>
+      <div id="stories"></div>
+      <div class="muted" style="margin-top:14px;" id="verText">v—</div>
+    </div>
   </div>
 
-  <!-- App Script (RELATIVE) -->
+  <!-- ABOUT OVERLAY -->
+  <div class="overlay" id="aboutOverlay" style="display:none;">
+    <div class="modal">
+      <div class="modalTop">
+        <div class="logoMini">☄️</div>
+        <div>
+          <div class="modalTitle">Doomroom News</div>
+          <div class="muted"><span id="aboutVersion">v—</span> • DoomWorks Interstellar</div>
+        </div>
+      </div>
+
+      <div class="modalBody">
+        <div class="muted" style="margin-bottom:10px;">
+          Take a breath. It’s all ok. Probably.
+        </div>
+
+        <div style="line-height:1.5;">
+          This software does not predict the future. It stares into headlines and whispers: <em>“hmm.”</em><br><br>
+          If the Doom Index spikes: drink water, touch grass, pet a dog, and remember:
+          <strong>the omens are dramatic little liars.</strong>
+        </div>
+      </div>
+
+      <div class="row" style="justify-content:flex-end; margin-top:14px;">
+        <button id="btnCloseAbout">OK</button>
+      </div>
+    </div>
+
+    <!-- tap outside to close -->
+    <div id="btnCloseAbout2" class="overlayBackdrop"></div>
+  </div>
+
+  <noscript>This app needs JavaScript to read the omens.</noscript>
+
   <script src="./app.js" defer></script>
 
-  <!-- Service Worker (RELATIVE + SAFE) -->
+  <!-- Service Worker -->
   <script>
     (function () {
       if (!("serviceWorker" in navigator)) return;
-
       window.addEventListener("load", function () {
-        navigator.serviceWorker
-          .register("./sw.js", { scope: "./" })
-          .catch(function () {
-            // Silent fail is fine; site still works without SW.
-          });
+        navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(function(){});
       });
     })();
   </script>
