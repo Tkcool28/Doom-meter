@@ -1,5 +1,5 @@
 // sw.js — Doomroom News
-const CACHE_NAME = "doomroom-v3.1.4";
+const CACHE_NAME = "doomroom-v3.1.5";
 const ASSETS = [
   "./",
   "./index.html",
