@@ -17,7 +17,39 @@
   <link rel="stylesheet" href="./styles.css" />
 </head>
 
-<body>
+<!-- About Overlay -->
+<div id="aboutOverlay" class="overlay hidden" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+  <div class="aboutCard">
+    <div class="aboutHeader">
+      <div class="aboutIcon" aria-hidden="true">🛰️</div>
+      <div>
+        <div id="aboutTitle" class="aboutTitle">Doomroom News</div>
+        <div id="aboutVersion" class="aboutMeta">v?.?.? • DoomWorks Interstellar</div>
+      </div>
+    </div>
+
+    <div class="aboutBody">
+      <p>
+        Built by <b>DoomWorks Interstellar</b>, a proud subsidiary of
+        <b>“Everything Is Fine, LLC”</b>.
+      </p>
+
+      <p>
+        This software does not predict the future. It stares into the headlines and whispers:
+        <i>“hmm.”</i>
+      </p>
+
+      <p>
+        If the Doom Index spikes: drink water, touch grass, pet a dog, and remember:
+        <b>the omens are dramatic little liars.</b>
+      </p>
+    </div>
+
+    <div class="aboutActions">
+      <button id="btnCloseAbout" class="btnPrimary">On. I’m calm’ish.</button>
+    </div>
+  </div>
+</div> <body>
   <div class="wrap">
 
     <div class="sectionTitle">GLOBAL BRIEFING</div>
