@@ -1,53 +1,47 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Doomroom News</title>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0b0f17" />
 
-    <!-- Theme -->
-    <meta name="theme-color" content="#0b0f16" />
-    <meta name="color-scheme" content="dark" />
+  <title>Doomroom News</title>
 
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="./manifest.webmanifest" />
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.webmanifest" />
 
-    <!-- iOS: Add to Home Screen -->
-    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <meta name="apple-mobile-web-app-title" content="Doomroom" />
+  <!-- iOS home screen -->
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Doomroom" />
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
 
-    <!-- Favicons -->
-    <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
-    <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png" />
+  <!-- Favicons -->
+  <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
+  <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png" />
 
-    <!-- Styles -->
-    <link rel="stylesheet" href="./styles.css" />
-  </head>
+  <!-- Styles -->
+  <link rel="stylesheet" href="./styles.css" />
+</head>
 
-  <body>
-    <!-- App Root -->
-    <div id="app" class="page">
-      <noscript>This app needs JavaScript to read the omens.</noscript>
-    </div>
+<body>
+  <div id="app" class="page">
+    <noscript>This app needs JavaScript to read the omens.</noscript>
+  </div>
 
-    <!-- App Script -->
-    <script src="./app.js" defer></script>
+  <script src="./app.js" defer></script>
 
-    <!-- Service Worker -->
-    <script>
-      (function () {
-        if (!("serviceWorker" in navigator)) return;
-
-        window.addEventListener("load", function () {
-          navigator.serviceWorker
-            .register("./sw.js", { scope: "./" })
-            .catch(function () {
-              // Silent fail is fine; site still works without SW.
-            });
-        });
-      })();
-    </script>
-  </body>
+  <script>
+    (function () {
+      if (!('serviceWorker' in navigator)) return;
+      window.addEventListener('load', function () {
+        navigator.serviceWorker
+          .register('./sw.js', { scope: './' })
+          .catch(function () {
+            // Silent fail is fine; app still works without SW.
+          });
+      });
+    })();
+  </script>
+</body>
 </html>
