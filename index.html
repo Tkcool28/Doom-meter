@@ -3,83 +3,79 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta name="color-scheme" content="dark" />
   <title>Doomroom News</title>
-  <meta name="color-scheme" content="dark light" />
   <link rel="stylesheet" href="./styles.css" />
 </head>
-
 <body>
   <div class="wrap">
-    <div class="kicker">GLOBAL BRIEFING</div>
+    <div class="topline">GLOBAL BRIEFING</div>
+    <h1>Doomroom<br/>News</h1>
+    <div class="sub">Doom Index (Highly Scientific)</div>
 
-    <div class="topRow">
-      <div>
-        <div class="brand">Doomroom News</div>
-        <div class="sub">Doom Index (Highly Scientific)</div>
-      </div>
-
-      <div class="controls">
-        <button id="refreshBtn">Refresh</button>
-        <button class="ghost" id="aboutBtn">About</button>
-      </div>
+    <div class="row">
+      <button id="refreshBtn" class="btn">Refresh</button>
+      <button id="aboutBtn" class="btn ghost">About</button>
+      <span id="statusPill" class="pill">Idle</span>
+      <span id="updatedPill" class="pill muted">Updated: —</span>
     </div>
 
-    <!-- HERO METER -->
-    <div class="card hero">
-      <div class="heroGrid">
-        <div class="heroLeft">
-          <div class="bigNumber" id="doomScore">—</div>
-          <div class="bigLabel" id="doomLabel">Loading…</div>
+    <div id="errorBox" class="card hide">
+      <div class="err"><b>!!</b> Error loading headlines.</div>
+      <div id="errorText" class="muted" style="margin-top:8px;"></div>
+    </div>
 
-          <div class="meter">
-            <div class="meterTrack">
-              <div class="meterFill" id="doomFill"></div>
-            </div>
-            <div class="metaRow">
-              <div class="pill" id="statusPill">Idle</div>
-              <div class="pill" id="updatedPill">Updated: —</div>
-              <div class="pill" id="filterPill">Filter: —</div>
-              <div class="pill" id="samplePill">Sample: —</div>
-            </div>
+    <div class="card">
+      <div class="doomHead">
+        <div class="doomNum" id="doomValue">—</div>
+        <div class="doomMeta">
+          <div class="doomLabel" id="doomLabel">—</div>
+          <div class="doomBar">
+            <div class="doomFill" id="doomFill"></div>
+          </div>
+          <div class="smallRow">
+            <span id="doomTag" class="pill">—</span>
+            <span id="filterPill" class="pill muted">Filter: English / United States</span>
+            <span id="samplePill" class="pill muted">Sample: —</span>
           </div>
         </div>
+      </div>
 
-        <div class="heroRight">
-          <div class="sectionTitle">DOOM BREAKDOWN</div>
-          <div id="breakdown" class="breakdown"></div>
+      <div class="sectionTitle">DOOM BREAKDOWN</div>
 
-          <div class="divider"></div>
+      <div class="meters" id="meters">
+        <!-- injected by app.js -->
+      </div>
 
-          <div class="sectionTitle">TOP DRIVERS</div>
-          <div id="drivers" class="drivers muted">—</div>
-        </div>
+      <div class="divider"></div>
+
+      <div class="sectionTitle">TOP DRIVERS</div>
+      <div class="drivers" id="drivers">
+        <!-- injected by app.js -->
       </div>
     </div>
 
-    <!-- ERRORS -->
-    <div class="card errorCard" id="errorBox" style="display:none">
-      <div class="errTitle"><b>!!</b> Error loading headlines</div>
-      <pre class="errText" id="errorText"></pre>
-    </div>
-
-    <!-- STORIES -->
     <div class="card">
       <div class="sectionTitle">LATEST STORIES</div>
-      <div id="stories" class="stories"></div>
+      <div class="grid" id="stories"></div>
     </div>
 
-    <!-- ABOUT -->
-    <div class="card" id="aboutBox" style="display:none">
-      <div class="sectionTitle">ABOUT</div>
-      <p class="muted" style="margin-top:10px;">
-        This app is satire. It uses real headlines and a highly questionable “doom” scoring algorithm.
-        It is not a forecast, prophecy, or advice. It’s vibes with math.
+    <div class="muted footer">
+      <small>v<span id="version"></span></small>
+    </div>
+  </div>
+
+  <div id="aboutBox" class="modalBackdrop hide">
+    <div class="modal">
+      <div class="modalTitle">About Doomroom News</div>
+      <p class="muted">
+        This app is satire. It uses real headlines to generate an extremely scientific,
+        totally serious “Doom Index.” It is not a forecast, prophecy, or financial advice.
       </p>
-      <p class="muted"><small>Sources: GDELT 2.1 via your Cloudflare Worker.</small></p>
-    </div>
-
-    <div class="footer muted">
-      <small id="version"></small>
+      <p class="muted"><small>Sources: GDELT via your proxy worker.</small></p>
+      <div class="row" style="margin-top:14px;">
+        <button id="closeAboutBtn" class="btn">Close</button>
+      </div>
     </div>
   </div>
 
