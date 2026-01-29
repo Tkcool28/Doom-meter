@@ -1,84 +1,78 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="color-scheme" content="dark" />
-  <title>Doomroom News</title>
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-<body>
-  <div class="wrap">
-    <div class="topline">GLOBAL BRIEFING</div>
-    <h1>Doomroom<br/>News</h1>
-    <div class="sub">Doom Index (Highly Scientific)</div>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0b0f17" />
+    <title>Doomroom News</title>
 
-    <div class="row">
-      <button id="refreshBtn" class="btn">Refresh</button>
-      <button id="aboutBtn" class="btn ghost">About</button>
-      <span id="statusPill" class="pill">Idle</span>
-      <span id="updatedPill" class="pill muted">Updated: —</span>
-    </div>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
 
-    <div id="errorBox" class="card hide">
-      <div class="err"><b>!!</b> Error loading headlines.</div>
-      <div id="errorText" class="muted" style="margin-top:8px;"></div>
-    </div>
+  <body>
+    <div class="wrap">
+      <header class="top">
+        <div class="brand">
+          <div class="kicker">GLOBAL BRIEFING</div>
+          <h1>Doomroom News</h1>
+          <div class="sub">Doom Index (Highly Scientific)</div>
+        </div>
 
-    <div class="card">
-      <div class="doomHead">
-        <div class="doomNum" id="doomValue">—</div>
-        <div class="doomMeta">
-          <div class="doomLabel" id="doomLabel">—</div>
-          <div class="doomBar">
-            <div class="doomFill" id="doomFill"></div>
-          </div>
-          <div class="smallRow">
-            <span id="doomTag" class="pill">—</span>
-            <span id="filterPill" class="pill muted">Filter: English / United States</span>
-            <span id="samplePill" class="pill muted">Sample: —</span>
+        <div class="actions">
+          <button id="refreshBtn" class="btn primary">Refresh</button>
+          <button id="aboutBtn" class="btn">About</button>
+        </div>
+      </header>
+
+      <section class="card hero">
+        <div class="heroGrid">
+          <div class="heroScore">
+            <div id="doomBig" class="doomBig">—</div>
+            <div id="doomLabel" class="doomLabel">Loading…</div>
+
+            <div class="doomTrack">
+              <div id="doomFill" class="doomFill" style="width:0%"></div>
+            </div>
+
+            <div class="metaRow">
+              <div id="statusPill" class="pill">Idle</div>
+              <div id="updatedPill" class="pill muted">Updated: —</div>
+            </div>
+
+            <div class="metaRow">
+              <div id="filterPill" class="pill muted">Filter: English / United States</div>
+              <div id="samplePill" class="pill muted">Sample: — headlines</div>
+            </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      <div class="sectionTitle">DOOM BREAKDOWN</div>
+      <section id="errorBox" class="card errorBox" style="display:none">
+        <div class="errTitle">!! Error loading headlines.</div>
+        <div id="errorText" class="muted"></div>
+      </section>
 
-      <div class="meters" id="meters">
-        <!-- injected by app.js -->
-      </div>
+      <section class="card">
+        <div class="sectionTitle">DOOM BREAKDOWN</div>
+        <div id="meters" class="meters"></div>
+      </section>
 
-      <div class="divider"></div>
+      <section class="card">
+        <div class="sectionTitle">TOP DRIVERS</div>
+        <div id="drivers" class="drivers"></div>
+      </section>
 
-      <div class="sectionTitle">TOP DRIVERS</div>
-      <div class="drivers" id="drivers">
-        <!-- injected by app.js -->
-      </div>
+      <section class="card">
+        <div class="sectionTitle">LATEST STORIES</div>
+        <div id="stories" class="stories"></div>
+      </section>
+
+      <footer class="foot">
+        <div id="version" class="muted"></div>
+      </footer>
     </div>
 
-    <div class="card">
-      <div class="sectionTitle">LATEST STORIES</div>
-      <div class="grid" id="stories"></div>
-    </div>
-
-    <div class="muted footer">
-      <small>v<span id="version"></span></small>
-    </div>
-  </div>
-
-  <div id="aboutBox" class="modalBackdrop hide">
-    <div class="modal">
-      <div class="modalTitle">About Doomroom News</div>
-      <p class="muted">
-        This app is satire. It uses real headlines to generate an extremely scientific,
-        totally serious “Doom Index.” It is not a forecast, prophecy, or financial advice.
-      </p>
-      <p class="muted"><small>Sources: GDELT via your proxy worker.</small></p>
-      <div class="row" style="margin-top:14px;">
-        <button id="closeAboutBtn" class="btn">Close</button>
-      </div>
-    </div>
-  </div>
-
-  <script src="./app.js"></script>
-</body>
+    <script src="./app.js"></script>
+  </body>
 </html>
