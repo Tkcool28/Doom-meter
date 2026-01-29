@@ -1,28 +1,16 @@
 {
   "name": "Doomroom News",
   "short_name": "Doomroom",
-  "description": "Global briefing for the terminally curious.",
-  "start_url": "./",
-  "scope": "./",
+  "description": "A highly scientific Doom Index powered by ominous headlines.",
+  "start_url": "/Doom-meter/",
+  "scope": "/Doom-meter/",
   "display": "standalone",
-  "background_color": "#0b0f16",
-  "theme_color": "#0b0f16",
+  "orientation": "portrait",
+  "background_color": "#0b0f17",
+  "theme_color": "#0b0f17",
   "icons": [
-    {
-      "src": "icons/doomroom-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "icons/doomroom-512.png",
-      "sizes": "512x512",
-      "type": "image/png"
-    },
-    {
-      "src": "icons/doomroom-512.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "maskable"
-    }
+    { "src": "/Doom-meter/icons/doomroom-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/Doom-meter/icons/doomroom-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/Doom-meter/icons/doomroom-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ]
 }
