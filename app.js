@@ -1,11 +1,10 @@
 /* app.js — Doomroom News (GitHub Pages) */
+const VERSION = "v3.0.4";
 
-const VERSION = "v3.0.3";
-
-// ✅ Your Cloudflare Worker base URL:
+// ✅ MUST match your working worker base
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
 
-// ---- Helpers ----
+// Helpers
 const $ = (id) => document.getElementById(id);
 
 function setText(id, text) {
@@ -23,58 +22,68 @@ function nowStamp() {
   return new Date().toLocaleString();
 }
 
-function setStatus(text) {
-  // Your UI shows a pill that currently says "Idle"
-  // If you have an element with id="statusPill" this will update it.
-  // If you don't, no harm.
-  setText("statusPill", text);
+// Build the exact query shape your worker advertises in the error message
+function buildGdeltUrl(query) {
+  const q = encodeURIComponent(query || "world");
+
+  // Worker example requires: mode=ArtList&format=json&maxrecords=50&timespan=1d
+  // You can tweak maxrecords/timespan later.
+  return (
+    `${PROXY_BASE}/gdel` +
+    `?query=${q}` +
+    `&mode=ArtList` +
+    `&format=json` +
+    `&maxrecords=50` +
+    `&timespan=1d`
+  );
 }
 
-function setUpdated(text) {
-  // Same idea for "Updated: —"
-  setText("updatedPill", text);
-  // If your HTML uses different ids, this just quietly does nothing.
+async function fetchText(url, timeoutMs = 12000) {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { method: "GET", cache: "no-store", signal: ctrl.signal });
+    const txt = await res.text();
+    return { ok: res.ok, status: res.status, text: txt };
+  } finally {
+    clearTimeout(t);
+  }
 }
 
-function buildProxyUrl(query) {
-  // ✅ Worker route is /gdel?query=...
-  return `${PROXY_BASE}/gdel?query=${encodeURIComponent(query)}&t=${Date.now()}`;
+function safeJsonParse(txt) {
+  try {
+    return { ok: true, json: JSON.parse(txt) };
+  } catch {
+    return { ok: false, json: null };
+  }
 }
 
 function normalizePayload(payload) {
-  // Worker error shape you've seen: { error, routes, example, upstream_url, body_preview, ok? }
-  if (!payload) {
-    return { articles: [], meta: { kind: "empty", keys: [] } };
-  }
-
-  // If the worker wraps in {ok:false,...} or {error:"Not found", ...}
-  if (payload.error || payload.ok === false) {
+  // error-shape from your worker: { error, routes, example }
+  if (!payload || payload.error || payload.ok === false) {
     return {
       articles: [],
       meta: {
         kind: "error",
-        error: payload.error || "Unknown error",
-        routes: payload.routes,
-        example: payload.example,
-        upstream_url: payload.upstream_url,
-        body_preview: payload.body_preview,
-        keys: Object.keys(payload),
+        error: payload?.error || "Unknown error",
+        routes: payload?.routes,
+        example: payload?.example,
+        keys: payload ? Object.keys(payload) : [],
       },
     };
   }
 
-  // Happy-path shapes
+  // happy path: either { articles: [...] } OR { data: { articles: [...] } }
   if (Array.isArray(payload.articles)) {
     return { articles: payload.articles, meta: { kind: "articles" } };
   }
-
   if (payload.data && Array.isArray(payload.data.articles)) {
     return { articles: payload.data.articles, meta: { kind: "data.articles" } };
   }
 
   return {
     articles: [],
-    meta: { kind: "unknown", keys: Object.keys(payload) },
+    meta: { kind: "unknown", keys: payload ? Object.keys(payload) : [] },
   };
 }
 
@@ -108,11 +117,8 @@ function renderStories(articles) {
 
     let domain = a.domain;
     if (!domain && a.url) {
-      try {
-        domain = new URL(a.url).hostname.replace(/^www\./, "");
-      } catch (_) {}
+      try { domain = new URL(a.url).hostname.replace(/^www\./, ""); } catch {}
     }
-
     meta.textContent = `${domain || "source"}${a.language ? " • " + a.language : ""}`;
 
     link.appendChild(title);
@@ -121,107 +127,85 @@ function renderStories(articles) {
   }
 }
 
-async function fetchJson(url, timeoutMs = 12000) {
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, {
-      method: "GET",
-      mode: "cors",
-      cache: "no-store",
-      signal: ctl.signal,
-    });
-
-    const txt = await res.text();
-
-    // Attempt JSON parse
-    try {
-      return { ok: res.ok, status: res.status, json: JSON.parse(txt), raw: txt };
-    } catch (_) {
-      return {
-        ok: false,
-        status: res.status,
-        json: { error: "Non-JSON response", body_preview: txt.slice(0, 250) },
-        raw: txt,
-      };
-    }
-  } catch (e) {
-    return {
-      ok: false,
-      status: 0,
-      json: { error: e?.name === "AbortError" ? "Request timed out" : String(e) },
-      raw: "",
-    };
-  } finally {
-    clearTimeout(t);
-  }
+function setStatus(text) {
+  setText("statusPill", text);
 }
 
-function showError(meta, triedUrl) {
+function setUpdated() {
+  setText("updatedPill", "Updated: " + nowStamp());
+}
+
+function showErrorBox(message) {
   show("errorBox", true);
-
-  const keys = meta?.keys ? meta.keys.join(", ") : "(none)";
-  const msg =
-    `No articles returned. Response keys: ${keys}` +
-    (meta?.error ? `\nError: ${meta.error}` : "") +
-    (meta?.upstream_url ? `\nUpstream: ${meta.upstream_url}` : "") +
-    (triedUrl ? `\nTried: ${triedUrl}` : "");
-
-  setText("errorText", msg);
+  setText("errorText", message);
 }
 
-function clearError() {
+function clearErrorBox() {
   show("errorBox", false);
   setText("errorText", "");
 }
 
 async function loadHeadlines(query = "world") {
-  setStatus("Loading...");
-  clearError();
+  clearErrorBox();
+  setStatus("Loading…");
 
-  const url = buildProxyUrl(query);
-  const r = await fetchJson(url);
+  const url = buildGdeltUrl(query);
+  const dbgUrl = url; // keep for error display
 
-  const payload = normalizePayload(r.json);
+  const res = await fetchText(url);
+  const parsed = safeJsonParse(res.text);
 
-  if (!payload.articles || payload.articles.length === 0) {
-    showError(payload.meta, url);
+  if (!res.ok || !parsed.ok) {
+    setStatus("Error");
+    showErrorBox(
+      `No articles returned.\n` +
+      `HTTP: ${res.status}\n` +
+      `Tried: ${dbgUrl}\n` +
+      `Body preview: ${res.text.slice(0, 240)}`
+    );
     renderStories([]);
-    setStatus("Idle");
     return;
   }
 
-  renderStories(payload.articles);
+  const normalized = normalizePayload(parsed.json);
+
+  if (!normalized.articles || normalized.articles.length === 0) {
+    setStatus("Idle");
+    const m = normalized.meta || {};
+    showErrorBox(
+      `No articles returned. Response keys: ${m.keys ? m.keys.join(", ") : "(none)"}\n` +
+      (m.error ? `Error: ${m.error}\n` : "") +
+      (m.routes ? `Routes: ${m.routes.join(", ")}\n` : "") +
+      (m.example ? `Example: ${m.example}\n` : "") +
+      `Tried: ${dbgUrl}`
+    );
+    renderStories([]);
+    return;
+  }
+
   setStatus("Idle");
-  setUpdated(nowStamp());
+  setUpdated();
+  renderStories(normalized.articles);
 }
 
-function wireUi() {
-  // Put version text if you have <small id="version"></small>
+function init() {
   setText("version", VERSION);
 
-  // Default state
-  setStatus("Idle");
-  setUpdated("—");
-  clearError();
-
-  // Buttons if they exist
   const refreshBtn = $("refreshBtn");
+  const aboutBtn = $("aboutBtn");
+
   if (refreshBtn) refreshBtn.addEventListener("click", () => loadHeadlines("world"));
 
-  const aboutBtn = $("aboutBtn");
   if (aboutBtn) {
     aboutBtn.addEventListener("click", () => {
-      const box = $("aboutBox");
-      if (!box) return;
-      box.style.display = box.style.display === "none" ? "" : "none";
+      const about = $("aboutBox");
+      if (!about) return;
+      about.style.display = (about.style.display === "none" || !about.style.display) ? "" : "none";
     });
   }
 
-  // Auto-load once on open
+  // Initial load
   loadHeadlines("world");
 }
 
-// Boot
-document.addEventListener("DOMContentLoaded", wireUi);
+document.addEventListener("DOMContentLoaded", init);
