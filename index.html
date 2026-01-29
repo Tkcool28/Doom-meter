@@ -5,62 +5,55 @@
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Doomroom News</title>
   <meta name="color-scheme" content="dark light" />
-  <style>
-    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-    body { margin:0; background:#0b0f17; color:#e8edf6; }
-    .wrap { max-width: 960px; margin:0 auto; padding: 28px 18px 60px; }
-    h1 { font-size: 44px; margin: 0 0 6px; letter-spacing: -0.02em; }
-    .sub { opacity:.85; margin: 0 0 18px; }
-    .row { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
-    button {
-      background:#1a2233; color:#e8edf6; border:1px solid rgba(255,255,255,.12);
-      padding:10px 14px; border-radius:999px; cursor:pointer;
-    }
-    button:hover { border-color: rgba(255,255,255,.22); }
-    .pill {
-      padding: 6px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.12);
-      opacity:.9; font-size:13px;
-    }
-    .card {
-      margin-top: 18px; border-radius: 18px; border:1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.04); padding: 16px;
-    }
-    .err { color:#ffb4b4; font-weight:700; }
-    .muted { opacity:.75; white-space:pre-wrap; }
-    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px; }
-    a.story {
-      display:block; text-decoration:none; color:inherit; padding: 14px;
-      border-radius: 14px; border:1px solid rgba(255,255,255,.10);
-      background: rgba(255,255,255,.03);
-    }
-    a.story:hover { border-color: rgba(255,255,255,.22); }
-    .storyTitle { font-weight:700; margin-bottom:6px; }
-    .storyMeta { opacity:.7; font-size:12px; }
-    small { opacity:.65; }
-  </style>
+  <link rel="stylesheet" href="./styles.css" />
 </head>
 
 <body>
   <div class="wrap">
-    <div style="letter-spacing:.18em; opacity:.6; font-size:12px;">GLOBAL BRIEFING</div>
-    <h1>Doomroom News</h1>
+    <div class="kicker">GLOBAL BRIEFING</div>
+    <h1>Doomroom<br/>News</h1>
     <div class="sub">Doom Index (Highly Scientific)</div>
 
     <div class="row">
       <button id="refreshBtn">Refresh</button>
       <button id="aboutBtn">About</button>
-      <div class="pill" id="statusPill">Idle</div>
-      <div class="pill" id="updatedPill">Updated: —</div>
+      <span class="pill" id="statusPill">Idle</span>
+      <span class="pill" id="updatedPill">Updated: —</span>
     </div>
 
-    <div class="card" id="errorBox" style="display:none;">
+    <!-- Doom Meter card -->
+    <div class="card" id="doomCard">
+      <div class="cardTitle">DOOM METER</div>
+      <div class="doomWrap">
+        <div class="doomScore" id="doomScore">—</div>
+        <div class="doomLabel" id="doomLabel">Waiting for headlines…</div>
+      </div>
+      <div class="doomBar" aria-hidden="true">
+        <div class="doomFill" id="doomFill"></div>
+      </div>
+      <div class="muted" id="doomMeta" style="margin-top:10px;"></div>
+    </div>
+
+    <!-- Errors -->
+    <div class="card" id="errorBox" style="display:none">
       <div class="err"><b>!!</b> Error loading headlines.</div>
       <div class="muted" id="errorText" style="margin-top:8px;"></div>
     </div>
 
+    <!-- Stories -->
     <div class="card">
-      <div style="letter-spacing:.18em; opacity:.6; font-size:12px; margin-bottom:10px;">LATEST STORIES</div>
+      <div class="cardTitle">LATEST STORIES</div>
       <div class="grid" id="stories"></div>
+    </div>
+
+    <!-- About -->
+    <div class="card" id="aboutBox" style="display:none">
+      <div class="cardTitle">ABOUT</div>
+      <p class="muted" style="margin-top:10px;">
+        This app is satire. It uses real news headlines and applies an extremely questionable “doom” scoring algorithm.
+        It is not a forecast, prophecy, or financial advice. It is vibes with math.
+      </p>
+      <p class="muted"><small>Sources: GDELT 2.1 via your Cloudflare Worker.</small></p>
     </div>
 
     <div class="muted" style="margin-top:14px;">
@@ -68,7 +61,6 @@
     </div>
   </div>
 
-  <!-- ✅ IMPORTANT: This must be app.js (and app.js must call /gdel, not /gkg or /g) -->
   <script src="./app.js"></script>
 </body>
 </html>
