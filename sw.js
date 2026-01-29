@@ -1,16 +1,21 @@
-// sw.js — Doomroom News
+// Doomroom News — sw.js (v3.1.5)
+// Caches only static assets. Does NOT cache cross-origin API calls.
+
 const CACHE_NAME = "doomroom-v3.1.5";
+
 const ASSETS = [
   "./",
   "./index.html",
+  "./styles.css",
   "./app.js",
   "./manifest.webmanifest",
-  "./icons/icon-192.png",
-  "./icons/icon-512.png",
-  "./icons/maskable-512.png"
+  "./icons/doomroom-192.png",
+  "./icons/doomroom-512.png",
+  "./icons/apple-touch-icon.png",
+  "./icons/favicon-32.png",
+  "./icons/favicon-16.png"
 ];
 
-// Install: cache the shell
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
@@ -18,7 +23,6 @@ self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
 
-// Activate: clean old caches
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
@@ -28,16 +32,15 @@ self.addEventListener("activate", (event) => {
   self.clients.claim();
 });
 
-// Fetch: network-first for HTML/JS, cache-first for static assets
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Don’t cache cross-origin API calls (your Worker feed)
+  // Don’t cache cross-origin (your proxy API is cross-origin)
   if (url.origin !== self.location.origin) return;
 
-  // HTML and JS: network-first so updates arrive
-  if (req.mode === "navigate" || url.pathname.endsWith(".js")) {
+  // Network-first for HTML navigation and JS/CSS so updates appear quickly
+  if (req.mode === "navigate" || url.pathname.endsWith(".js") || url.pathname.endsWith(".css")) {
     event.respondWith(
       fetch(req)
         .then((res) => {
@@ -50,7 +53,7 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Other assets: cache-first
+  // Cache-first for everything else
   event.respondWith(
     caches.match(req).then((cached) => cached || fetch(req))
   );
