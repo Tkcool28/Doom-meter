@@ -1,15 +1,12 @@
 {
   "name": "Doomroom News",
   "short_name": "Doomroom",
-  "start_url": "./?source=homescreen",
-  "scope": "./",
+  "start_url": "./",
   "display": "standalone",
-  "background_color": "#0b0f17",
-  "theme_color": "#0b0f17",
-  "description": "A highly scientific Doom Index. Consult the omens responsibly.",
+  "background_color": "#0b0f14",
+  "theme_color": "#0b0f14",
   "icons": [
-    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
-    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
-    { "src": "./icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+    { "src": "./icons/doomroom-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "./icons/doomroom-512.png", "sizes": "512x512", "type": "image/png" }
   ]
 }
