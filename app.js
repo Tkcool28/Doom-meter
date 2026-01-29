@@ -1,12 +1,11 @@
-/* Doomroom News — app.js (v3.1.5)
+/* Doomroom News — app.js (v3.1.6)
    Fixes:
-   - Null-safe DOM writes (no more textContent-of-null crashes)
-   - About overlay ALWAYS closes (both buttons + tap backdrop)
-   - Filter label = English / Global
-   - Stronger "English-only" filtering (heuristic, not perfect but effective)
+   - Worker fetch: tries with &lang=en first, then falls back to no-lang URLs
+   - English filter: no longer "hint word" strict; only blocks obvious non-Latin scripts
+   - Better debug in the status pill (shows why it failed)
 */
 
-const VERSION = "v3.1.5";
+const VERSION = "v3.1.6";
 
 // Your worker (keep as-is)
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
@@ -15,9 +14,9 @@ const ROUTE = "gdeit";
 // Content knobs
 const DEFAULT_QUERY = "world";
 const MAX_RECORDS = 25;
-const TIMESPAN = "7d"; // wider net so you actually get "today"
+const TIMESPAN = "7d";
 
-// Doom categories (same vibe as before)
+// Doom categories
 const CATEGORY_MAX = 30;
 const CATS = [
   { key: "conflict", label: "Conflict Heat", keywords: ["war","strike","attack","missile","drone","airstrike","invasion","ceasefire","shelling","hostage","terror","bomb","blast"] },
@@ -99,17 +98,16 @@ function wireAbout() {
   }
 }
 
-// ---------- English-only heuristic ----------
+// ---------- Language filter (SAFE / NOT STRICT) ----------
+// Block obvious non-Latin scripts (Chinese, Cyrillic, Arabic, etc.).
+// This avoids "not in English" disasters without accidentally filtering EVERYTHING.
 const NON_LATIN = /[\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0900-\u097F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/;
-const EN_HINT = /\b(the|and|to|of|in|for|on|with|from|at|as|by|after|amid|says|new|report|reports)\b/i;
 
-function isEnglishish(title) {
+function keepEnglishish(title) {
   if (!title) return false;
   const t = String(title).trim();
   if (!t) return false;
   if (NON_LATIN.test(t)) return false;
-  // Require at least one common English hint word
-  if (!EN_HINT.test(t)) return false;
   return true;
 }
 
@@ -126,7 +124,8 @@ function dedupeArticles(list) {
       title,
       url,
       source: String(a?.source || a?.publisher || a?.domain || a?.site || "").trim(),
-      time: String(a?.time || a?.publishedAt || a?.published || "").trim()
+      time: String(a?.time || a?.publishedAt || a?.published || "").trim(),
+      language: String(a?.language || "").trim()
     });
   }
   return out;
@@ -166,30 +165,43 @@ function labelFromPct(p) {
   return "Chill (suspiciously).";
 }
 
-// ---------- Fetch ----------
+// ---------- Fetch with fallback ----------
+async function fetchJSON(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
 async function fetchViaWorker(query) {
   const q = encodeURIComponent(query);
   const max = encodeURIComponent(String(MAX_RECORDS));
   const span = encodeURIComponent(TIMESPAN);
 
-  // IMPORTANT: we ask worker for lang=en and NO country restriction (global)
-  const urls = [
+  // 1) Try with lang=en (IF worker supports it)
+  const urlsLang = [
     `${PROXY_BASE}/${ROUTE}?query=${q}&max=${max}&timespan=${span}&lang=en`,
     `${PROXY_BASE}/${ROUTE}?q=${q}&max=${max}&timespan=${span}&lang=en`,
     `${PROXY_BASE}/${ROUTE}?g=${q}&max=${max}&timespan=${span}&lang=en`
   ];
 
+  // 2) Fallback: NO lang param (this was working earlier in your builds)
+  const urlsNoLang = [
+    `${PROXY_BASE}/${ROUTE}?query=${q}&max=${max}&timespan=${span}`,
+    `${PROXY_BASE}/${ROUTE}?q=${q}&max=${max}&timespan=${span}`,
+    `${PROXY_BASE}/${ROUTE}?g=${q}&max=${max}&timespan=${span}`
+  ];
+
   let lastErr = null;
-  for (const u of urls) {
-    try {
-      const res = await fetch(u, { cache: "no-store" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-      return data;
-    } catch (e) {
-      lastErr = e;
-    }
+
+  for (const u of urlsLang) {
+    try { return await fetchJSON(u); }
+    catch (e) { lastErr = e; }
   }
+  for (const u of urlsNoLang) {
+    try { return await fetchJSON(u); }
+    catch (e) { lastErr = e; }
+  }
+
   throw lastErr || new Error("Worker fetch failed");
 }
 
@@ -239,7 +251,7 @@ function renderStories(items) {
     return `
       <a class="storyCard" href="${url}" target="_blank" rel="noopener noreferrer">
         <div class="storyTitle">${escapeHtml(title)}</div>
-        <div class="storyMeta muted">${escapeHtml(source)} • English • Global</div>
+        <div class="storyMeta muted">${escapeHtml(source)} • English-ish • Global</div>
       </a>
     `;
   }).join("");
@@ -264,15 +276,24 @@ async function run(query = DEFAULT_QUERY) {
   try {
     const data = await fetchViaWorker(query);
 
-    // Worker might return { articles: [...] } OR raw [...]
-    const rawList = Array.isArray(data) ? data : (data.articles || data.items || data.results || []);
+    // Worker might return { articles: [...] } OR raw [...] or other keys
+    const rawList =
+      Array.isArray(data) ? data :
+      (data.articles || data.items || data.results || data.data || data.entries || []);
+
     let list = dedupeArticles(rawList);
 
-    // English-only filter (global)
-    list = list.filter(a => isEnglishish(a.title));
+    const before = list.length;
 
+    // Filter label is what user wants, but filter is "safe English-ish"
     safeText(el.filterPill, "Filter: English / Global");
-    safeText(el.sample, `Sample: ${list.length} headlines`);
+
+    // Keep only obvious Latin-script headlines (stops Chinese/Cyrillic flood)
+    list = list.filter(a => keepEnglishish(a.title));
+
+    const after = list.length;
+
+    safeText(el.sample, `Sample: ${after} headlines`);
 
     // Score doom
     const totals = {};
@@ -283,7 +304,6 @@ async function run(query = DEFAULT_QUERY) {
       const scores = scoreHeadline(a.title);
       for (const c of CATS) totals[c.key] += scores[c.key];
 
-      // quick driver collection
       const t = (a.title || "").toLowerCase();
       for (const c of CATS) {
         for (const kw of c.keywords) {
@@ -292,7 +312,6 @@ async function run(query = DEFAULT_QUERY) {
       }
     }
 
-    // Total doom
     const doomScore = Object.values(totals).reduce((s, n) => s + n, 0);
     const doomPct = pctFromScore(doomScore);
     const doomCls = classFromPct(doomPct);
@@ -306,10 +325,8 @@ async function run(query = DEFAULT_QUERY) {
       el.doomFill.style.width = `${doomPct}%`;
     }
 
-    // breakdown bars
     renderBars(totals);
 
-    // top drivers
     const driverCounts = {};
     for (const k of keywordHits) driverCounts[k] = (driverCounts[k] || 0) + 1;
     const topDrivers = Object.entries(driverCounts)
@@ -318,21 +335,20 @@ async function run(query = DEFAULT_QUERY) {
       .map(([k]) => k);
 
     renderDrivers(topDrivers);
-
-    // stories
     renderStories(list.slice(0, 12));
 
-    setStatus("The omens are… readable.");
+    setStatus(`Omens readable. (${before}→${after})`);
     setUpdated(nowStamp());
     safeText(el.okPill, "OK");
 
   } catch (err) {
-    setStatus("Omen failure. Try refresh.");
+    // IMPORTANT: show error reason in the pill so we can diagnose from a screenshot
+    const msg = (err && err.message) ? err.message : String(err);
+    setStatus(`Omen failure: ${msg}`);
     setUpdated(nowStamp());
     safeText(el.okPill, "OK");
     safeText(el.sample, "Sample: 0 headlines");
     renderStories([]);
-    // keep console help for future debugging
     console.error(err);
   }
 }
@@ -349,6 +365,5 @@ window.addEventListener("DOMContentLoaded", () => {
   wireAbout();
   wireRefresh();
 
-  // first run
   run(DEFAULT_QUERY);
 });
