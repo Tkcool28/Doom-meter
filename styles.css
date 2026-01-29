@@ -338,3 +338,44 @@ a:focus-visible {
     -webkit-backdrop-filter: none !important;
   }
 }
+/* --- PURPLE BAND EXORCISM (Android/Chrome) --- */
+
+/* Force a real, solid page backdrop no matter what */
+html, body {
+  height: 100%;
+  background: #0b0f17 !important;
+  overscroll-behavior: none; /* stops overscroll glow */
+}
+
+/* Create a fixed backdrop layer that can't get tinted */
+body {
+  min-height: 100vh;
+  margin: 0;
+  position: relative;
+  -webkit-tap-highlight-color: transparent; /* removes tap flash */
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: #0b0f17;       /* solid base behind everything */
+  z-index: -1;
+  pointer-events: none;
+}
+
+/* Kill selection/tap highlight weirdness (sometimes shows as purple) */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+::selection { background: rgba(255,255,255,0.12); }
+
+/* If your cards or bar tracks are semi-transparent, force them solid */
+.card {
+  background: rgba(20, 26, 36, 0.92) !important; /* slightly less transparent */
+}
+
+/* If your meter tracks use transparency, make them solid too */
+.barTrack, .meterTrack, .track, progress {
+  background-color: rgba(255,255,255,0.08) !important;
+}
