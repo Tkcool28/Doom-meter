@@ -1,8 +1,7 @@
 // Doomroom News — sw.js (v3.1.5)
-// Caches only static assets. Does NOT cache cross-origin API calls.
+// Cache static assets only. Do NOT cache your proxy/API calls.
 
 const CACHE_NAME = "doomroom-v3.1.5";
-
 const ASSETS = [
   "./",
   "./index.html",
@@ -33,28 +32,13 @@ self.addEventListener("activate", (event) => {
 });
 
 self.addEventListener("fetch", (event) => {
-  const req = event.request;
-  const url = new URL(req.url);
+  const url = new URL(event.request.url);
 
-  // Don’t cache cross-origin (your proxy API is cross-origin)
+  // Only handle same-origin requests (your GitHub Pages files).
   if (url.origin !== self.location.origin) return;
 
-  // Network-first for HTML navigation and JS/CSS so updates appear quickly
-  if (req.mode === "navigate" || url.pathname.endsWith(".js") || url.pathname.endsWith(".css")) {
-    event.respondWith(
-      fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_NAME).then((c) => c.put(req, copy));
-          return res;
-        })
-        .catch(() => caches.match(req).then((r) => r || caches.match("./")))
-    );
-    return;
-  }
-
-  // Cache-first for everything else
+  // Cache-first for static assets.
   event.respondWith(
-    caches.match(req).then((cached) => cached || fetch(req))
+    caches.match(event.request).then((cached) => cached || fetch(event.request))
   );
 });
