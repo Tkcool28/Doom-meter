@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Doomroom News</title>
+  <meta name="color-scheme" content="dark light" />
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin:0; background:#0b0f17; color:#e8edf6; }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 28px 18px 60px; }
+    h1 { font-size: 44px; margin: 0 0 6px; letter-spacing: -0.02em; }
+    .sub { opacity: .85; margin: 0 0 18px; }
+    .row { display:flex; gap:12px; flex-wrap: wrap; align-items:center; }
+    button {
+      background:#1a2233; color:#e8edf6; border:1px solid rgba(255,255,255,.12);
+      padding:10px 14px; border-radius: 999px; cursor:pointer;
+    }
+    button:hover { border-color: rgba(255,255,255,.22); }
+    .pill {
+      padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(255,255,255,.12);
+      opacity:.9; font-size: 13px;
+    }
+    .card {
+      margin-top: 18px;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.10);
+      background: rgba(255,255,255,.04);
+      padding: 16px;
+    }
+    .muted { opacity:.7; }
+    .err { color:#ffb4b4; }
+    .grid { display:grid; gap: 10px; }
+    a { color:#b9d2ff; text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: rgba(0,0,0,.25);
+      padding: 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,.08);
+      overflow:auto;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="muted" style="letter-spacing:.18em;">GLOBAL BRIEFING</div>
+    <h1>Doomroom News</h1>
+    <p class="sub">Doom Index (Highly Scientific)</p>
+
+    <div class="row">
+      <button id="btnRefresh">Refresh</button>
+      <button id="btnAbout">About</button>
+      <span class="pill" id="status">Idle</span>
+      <span class="pill" id="updated">Updated: —</span>
+    </div>
+
+    <div class="card" id="errorBox" style="display:none;">
+      <div class="err"><b>!!</b> Error loading headlines.</div>
+      <div class="muted" id="errorText" style="margin-top:8px;"></div>
+      <div class="muted" style="margin-top:8px;"><small id="debugText"></small></div>
+    </div>
+
+    <div class="card">
+      <div style="letter-spacing:.18em; opacity:.75;">LATEST STORIES</div>
+      <div class="grid" id="stories" style="margin-top:12px;"></div>
+    </div>
+
+    <div class="card" id="aboutBox" style="display:none;">
+      <div style="letter-spacing:.18em; opacity:.75;">SETTINGS &amp; ABOUT</div>
+      <p class="muted" style="margin-top:10px;">
+        This app is satire. It uses real news headlines as inputs and turns them into a comedic “Doom Index.”
+        It is not a forecast, prophecy, or financial advice from the universe.
+      </p>
+      <p class="muted"><small>Sources: GDELT (DOC API). Displayed headlines link to original publishers.</small></p>
+    </div>
+
+    <div class="muted" style="margin-top: 14px;">
+      <small id="version"></small>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>
