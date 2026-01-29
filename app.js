@@ -1,254 +1,343 @@
-/* Doomroom News (GitHub Pages) */
-const VERSION = "v3.2.0";
+/* Doomroom News — GitHub Pages */
+const VERSION = "3.2.0";
 
-// Your Worker base (must match exactly)
+/**
+ * Your Cloudflare Worker proxy base
+ * Must support:
+ *  - GET /health
+ *  - GET /gdelt?<query params>
+ */
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
 
-// Filters (tighten/loosen as you like)
-const WANT_LANG = "English";
-const WANT_COUNTRY = "United States";
+/** Default pull */
+const DEFAULT_QUERY = "world";
 
-// Query
-const QUERY = "world";
-const MODE = "ArtList";
-const FORMAT = "json";
-const MAXRECORDS = 60;
-const TIMESPAN = "1d";
+/** Hard filter (what you wanted) */
+const FILTER_LANGUAGE = "English";
+const FILTER_COUNTRY = "United States";
+
+/** Doom categories (working theory — tweak freely) */
+const CATS = [
+  { key: "conflict", label: "Conflict Heat", weight: 2.2, keywords: ["war","strike","missile","bomb","attack","ceasefire","invasion","airstrike","military","hostage","terror","drone","border","iran","israel","gaza","ukraine","russia","nato"] },
+  { key: "climate",  label: "Climate Weirdness", weight: 1.6, keywords: ["climate","storm","hurricane","flood","wildfire","heat","drought","tornado","earthquake","eruption","blizzard","record heat","extreme weather","sea level"] },
+  { key: "econ",     label: "Economic Drama", weight: 1.4, keywords: ["inflation","recession","layoffs","bank","market","stocks","crash","debt","rates","tariff","sanctions","oil price","housing"] },
+  { key: "dem",      label: "Democracy Melting", weight: 1.8, keywords: ["election","coup","protest","riot","ban","censorship","authoritarian","court","impeach","corruption","fraud","democracy"] },
+  { key: "cyber",    label: "Cyber Chaos", weight: 1.6, keywords: ["hack","breach","ransomware","cyber","leak","malware","ddos","data breach","security flaw"] },
+  { key: "nuclear",  label: "Nuclear Words", weight: 2.5, keywords: ["nuclear","uranium","missile test","icbm","warhead","radiation","reactor"] },
+  { key: "space",    label: "Space Rocks", weight: 1.1, keywords: ["asteroid","comet","meteor","space debris","solar flare","nasa"] },
+  { key: "misc",     label: "Misc. Chaos", weight: 0.8, keywords: ["pandemic","outbreak","mystery","collapse","deadly","massive","emergency","evacuation","shooting","explosion"] },
+];
 
 const $ = (id) => document.getElementById(id);
 
-function setText(id, text) {
-  const el = $(id);
-  if (el) el.textContent = text;
+function setText(id, txt){ const el = $(id); if (el) el.textContent = txt; }
+function show(id, on=true){ const el = $(id); if (el) el.classList.toggle("hide", !on); }
+
+function nowStamp(){ return new Date().toLocaleString(); }
+
+function colorForScore(v){
+  // 0–100
+  if (v >= 95) return "fire";
+  if (v >= 85) return "red";
+  if (v >= 70) return "orange";
+  if (v >= 40) return "yellow";
+  return "green";
 }
 
-function show(id, on = true) {
-  const el = $(id);
+function paintFill(el, score){
   if (!el) return;
-  el.style.display = on ? "" : "none";
-}
-
-function nowStamp() {
-  return new Date().toLocaleString();
-}
-
-async function fetchJSON(url, timeoutMs = 12000) {
-  const ctl = new AbortController();
-  const t = setTimeout(() => ctl.abort(), timeoutMs);
-
-  try {
-    const res = await fetch(url, { method: "GET", cache: "no-store", signal: ctl.signal });
-    const raw = await res.text();
-    try {
-      const json = JSON.parse(raw);
-      return { ok: res.ok, status: res.status, json, raw };
-    } catch {
-      return { ok: false, status: res.status, json: { error: "Non-JSON response", body_preview: raw.slice(0, 300) }, raw };
-    }
-  } catch (e) {
-    return { ok: false, status: 0, json: { error: String(e) }, raw: "" };
-  } finally {
-    clearTimeout(t);
+  const tier = colorForScore(score);
+  // “on fire” is a gradient trick
+  if (tier === "fire"){
+    el.style.background = "repeating-linear-gradient(45deg, #ff3b30 0 10px, #ffcc00 10px 20px)";
+  } else if (tier === "red"){
+    el.style.background = "#ff3b30";
+  } else if (tier === "orange"){
+    el.style.background = "#ff9500";
+  } else if (tier === "yellow"){
+    el.style.background = "#ffcc00";
+  } else {
+    el.style.background = "#38c172";
   }
 }
 
-// Normalize worker payload
-function normalizePayload(payload) {
-  if (payload && (payload.error || payload.ok === false)) {
+function normalizePayload(payload){
+  // Error shape (what you saw earlier): {error, routes, example}
+  if (!payload || payload.error || payload.ok === false){
     return {
-      articles: [],
-      meta: {
-        kind: "error",
-        error: payload.error || payload.err || "Unknown error",
-        routes: payload.routes,
-        example: payload.example,
-        upstream_url: payload.upstream_url,
-        body_preview: payload.body_preview,
-        keys: Object.keys(payload || {}),
-      },
+      ok: false,
+      error: payload?.error || "Unknown error",
+      routes: payload?.routes,
+      example: payload?.example,
+      keys: payload ? Object.keys(payload) : [],
+      articles: []
     };
   }
-  if (payload && Array.isArray(payload.articles)) return { articles: payload.articles, meta: { kind: "articles" } };
-  if (payload && payload.data && Array.isArray(payload.data.articles)) return { articles: payload.data.articles, meta: { kind: "data.articles" } };
-  return { articles: [], meta: { kind: "unknown", keys: payload ? Object.keys(payload) : [] } };
+
+  // Common “happy” shapes we’ve seen:
+  // 1) { articles: [...] }
+  if (Array.isArray(payload.articles)) return { ok:true, articles: payload.articles };
+
+  // 2) { data: { articles: [...] } }
+  if (payload.data && Array.isArray(payload.data.articles)) return { ok:true, articles: payload.data.articles };
+
+  return { ok:true, articles: [], keys: Object.keys(payload) };
 }
 
-function cleanDomain(url) {
-  try { return new URL(url).hostname.replace(/^www\./, ""); }
-  catch { return ""; }
+async function fetchJSON(url, timeoutMs=14000){
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try{
+    const res = await fetch(url, { method:"GET", mode:"cors", cache:"no-store", signal: ctrl.signal });
+    const txt = await res.text();
+    clearTimeout(t);
+    try{
+      return { ok: res.ok, status: res.status, json: JSON.parse(txt), raw: txt };
+    } catch {
+      return { ok:false, status: res.status, json: { error:"Non-JSON response", body_preview: txt.slice(0, 250) }, raw: txt };
+    }
+  } catch (e){
+    clearTimeout(t);
+    return { ok:false, status: 0, json: { error: String(e) } };
+  }
 }
 
-function explainError(meta, urlTried) {
-  const lines = [
-    meta?.keys ? `Response keys: ${meta.keys.join(", ")}` : "",
-    meta?.error ? `Error: ${meta.error}` : "",
-    meta?.routes ? `Routes: ${meta.routes.join(", ")}` : "",
-    meta?.example ? `Example: ${meta.example}` : "",
-    meta?.upstream_url ? `Upstream: ${meta.upstream_url}` : "",
-    meta?.body_preview ? `Body preview: ${meta.body_preview}` : "",
-    urlTried ? `Tried: ${urlTried}` : "",
-  ].filter(Boolean);
-  return lines.join("\n");
+function gdeltURL(query){
+  // Keep it simple. Worker handles upstream.
+  const u = new URL(PROXY_BASE + "/gdelt");
+  u.searchParams.set("query", query);
+  u.searchParams.set("mode", "ArtList");
+  u.searchParams.set("format", "json");
+  u.searchParams.set("maxrecords", "60");
+  u.searchParams.set("timespan", "1d");
+  return u.toString();
 }
 
-/* ---------------------------
-   Doom model (categories + bars)
----------------------------- */
+function domainFrom(url){
+  try { return new URL(url).hostname.replace(/^www\./,""); } catch { return ""; }
+}
 
-const CATS = [
-  { key: "conflict", label: "Conflict Heat", weight: 1.15, words: ["war","strike","attack","missile","bomb","explosion","killed","dead","terror","hostage","invasion","troops","airstrike","rocket","shooting"] },
-  { key: "climate",  label: "Climate Weirdness", weight: 1.05, words: ["climate","heatwave","drought","wildfire","flood","hurricane","storm","emissions","record heat","ice","extreme weather"] },
-  { key: "economy",  label: "Economic Drama", weight: 1.00, words: ["recession","inflation","crash","collapse","bankruptcy","layoffs","default","debt","panic","market turmoil"] },
-  { key: "democracy",label: "Democracy Melting", weight: 1.05, words: ["coup","sanctions","unrest","riot","martial law","election fraud","authoritarian","arrested","crackdown","corruption"] },
-  { key: "cyber",    label: "Cyber Chaos", weight: 0.95, words: ["hack","breach","ransomware","cyberattack","leak","outage","ddos","malware","data stolen"] },
-  { key: "nuclear",  label: "Nuclear Words", weight: 1.10, words: ["nuclear","uranium","radiation","warhead","icbm","reactor","enrichment"] },
-  { key: "space",    label: "Space Rocks", weight: 0.80, words: ["asteroid","meteor","comet","near-earth object","impact risk"] },
-  { key: "misc",     label: "Misc. Chaos", weight: 0.70, words: ["emergency","disaster","outbreak","pandemic","evacuation","shortage","blackout","massive fire","explosion"] },
-];
+function scoreArticles(articles){
+  const scored = [];
+  for (const a of articles){
+    const title = (a.title || "").toLowerCase();
+    const url = a.url || a.url_mobile || "";
+    const lang = a.language || "";
+    const country = a.sourcecountry || "";
+    const dom = a.domain || domainFrom(url);
 
-function scoreCategories(articles) {
-  const titles = (articles || []).map(a => (a.title || "").toLowerCase());
-  const n = Math.max(1, titles.length);
+    // Filter: English + US
+    if (FILTER_LANGUAGE && lang && lang !== FILTER_LANGUAGE) continue;
+    if (FILTER_COUNTRY && country && country !== FILTER_COUNTRY) continue;
 
-  // Raw points per category (count hits, mild diminishing returns)
-  const catPoints = {};
-  const catHits = {};
+    // Category hits
+    const hits = {};
+    let total = 0;
 
-  for (const c of CATS) {
-    let pts = 0;
-    const hits = [];
-
-    for (const w of c.words) {
-      const count = titles.reduce((acc, t) => acc + (t.includes(w) ? 1 : 0), 0);
-      if (count > 0) {
-        const add = Math.min(10, 2 + count); // 3..10
-        pts += add;
-        hits.push({ w, count, add });
+    for (const c of CATS){
+      let count = 0;
+      for (const kw of c.keywords){
+        if (title.includes(kw)) count++;
+      }
+      if (count > 0){
+        hits[c.key] = count;
+        total += count * c.weight;
       }
     }
 
-    // Normalize by sample size and weight
-    // The divisor sets how “sensitive” the meter is. Tweak if you want more doom.
-    const norm = Math.min(100, Math.round((pts * c.weight / (n * 1.8)) * 100));
-    catPoints[c.key] = norm;
-    catHits[c.key] = hits;
+    scored.push({
+      raw: a,
+      title: a.title || "(untitled)",
+      url,
+      lang,
+      country,
+      domain: dom || "source",
+      hits,
+      doomContribution: total
+    });
   }
 
-  // Overall score: weighted-ish sum, then clamp
-  const sum = Object.values(catPoints).reduce((a, b) => a + b, 0);
-  const overall = Math.min(100, Math.round(sum / 4.2)); // scale factor for 0–100
+  // If filter is too strict and returns nothing, fall back to English-only
+  if (scored.length === 0){
+    for (const a of articles){
+      const title = (a.title || "").toLowerCase();
+      const url = a.url || a.url_mobile || "";
+      const lang = a.language || "";
+      const country = a.sourcecountry || "";
+      const dom = a.domain || domainFrom(url);
 
-  return { overall, catPoints, catHits };
+      if (FILTER_LANGUAGE && lang && lang !== FILTER_LANGUAGE) continue;
+
+      const hits = {};
+      let total = 0;
+      for (const c of CATS){
+        let count = 0;
+        for (const kw of c.keywords){
+          if (title.includes(kw)) count++;
+        }
+        if (count > 0){
+          hits[c.key] = count;
+          total += count * c.weight;
+        }
+      }
+
+      scored.push({
+        raw: a,
+        title: a.title || "(untitled)",
+        url,
+        lang,
+        country,
+        domain: dom || "source",
+        hits,
+        doomContribution: total
+      });
+    }
+    setText("filterPill", "Filter: English");
+  } else {
+    setText("filterPill", `Filter: ${FILTER_LANGUAGE} / ${FILTER_COUNTRY}`);
+  }
+
+  // Sort: highest contribution first
+  scored.sort((x,y) => (y.doomContribution - x.doomContribution));
+  return scored;
 }
 
-function labelFor(score) {
-  if (score >= 90) return "We are on fire.";
-  if (score >= 70) return "This is… not ideal.";
-  if (score >= 40) return "Moderately concerning.";
-  if (score >= 20) return "Low doom. Suspicious.";
-  return "We’re so back.";
+function computeDoom(scored){
+  // Aggregate category scores
+  const catScores = {};
+  for (const c of CATS) catScores[c.key] = 0;
+
+  for (const s of scored){
+    for (const c of CATS){
+      const hits = s.hits[c.key] || 0;
+      catScores[c.key] += hits * c.weight;
+    }
+  }
+
+  // Convert to 0–100-ish:
+  // cap each category so one spammy theme doesn’t instantly hit 100
+  const caps = {
+    conflict: 40,
+    climate: 28,
+    econ: 22,
+    dem: 24,
+    cyber: 18,
+    nuclear: 28,
+    space: 12,
+    misc: 18,
+  };
+
+  let sum = 0;
+  let max = 0;
+  for (const c of CATS){
+    const cap = caps[c.key] ?? 20;
+    const v = Math.min(catScores[c.key], cap);
+    sum += v;
+    max += cap;
+  }
+
+  const doom = max > 0 ? Math.round((sum / max) * 100) : 0;
+
+  return { doom, catScores };
 }
 
-function fillClass(score) {
-  if (score >= 90) return "fill-fire";
-  if (score >= 70) return "fill-red";
-  if (score >= 40) return "fill-yellow";
-  return "fill-green";
+function doomLabel(doom){
+  if (doom >= 95) return "The sky is screaming.";
+  if (doom >= 85) return "Uh oh.";
+  if (doom >= 70) return "Spicy news day.";
+  if (doom >= 40) return "Unsettling vibes.";
+  if (doom >= 15) return "We’re so back.";
+  return "Chill (suspiciously).";
 }
 
-function setFill(el, score) {
-  if (!el) return;
-  el.style.width = `${Math.max(0, Math.min(100, score))}%`;
-  el.classList.remove("fill-green", "fill-yellow", "fill-red", "fill-fire");
-  el.classList.add(fillClass(score));
-}
-
-/* ---------------------------
-   Rendering
----------------------------- */
-
-function renderBreakdown(catPoints) {
-  const wrap = $("breakdown");
-  if (!wrap) return;
+function renderMeters(catScores){
+  const wrap = $("meters");
   wrap.innerHTML = "";
 
-  for (const c of CATS) {
+  // Normalize each category score into 0–100 per-category bar
+  // Use the same caps as computeDoom for consistent feel
+  const caps = {
+    conflict: 40,
+    climate: 28,
+    econ: 22,
+    dem: 24,
+    cyber: 18,
+    nuclear: 28,
+    space: 12,
+    misc: 18,
+  };
+
+  for (const c of CATS){
+    const cap = caps[c.key] ?? 20;
+    const raw = catScores[c.key] || 0;
+    const pct = Math.max(0, Math.min(100, Math.round((raw / cap) * 100)));
+
     const row = document.createElement("div");
-    row.className = "bRow";
+    row.className = "meterRow";
 
     const name = document.createElement("div");
-    name.className = "bName";
+    name.className = "meterName";
     name.textContent = c.label;
 
     const track = document.createElement("div");
-    track.className = "bTrack";
+    track.className = "meterTrack";
 
     const fill = document.createElement("div");
-    fill.className = "bFill";
-    setFill(fill, catPoints[c.key] ?? 0);
+    fill.className = "meterFill";
+    fill.style.width = pct + "%";
+    paintFill(fill, pct);
 
     track.appendChild(fill);
 
+    const val = document.createElement("div");
+    val.className = "meterValue";
+    val.textContent = pct;
+
     row.appendChild(name);
     row.appendChild(track);
+    row.appendChild(val);
 
     wrap.appendChild(row);
   }
 }
 
-function renderDrivers(articles, catHits) {
-  const drivers = $("drivers");
-  if (!drivers) return;
-  drivers.innerHTML = "";
+function renderDrivers(scored){
+  const wrap = $("drivers");
+  wrap.innerHTML = "";
 
-  // Pick top 4 “driver” headlines: those that match the most categories/keywords
-  const scored = (articles || []).map(a => {
-    const t = (a.title || "").toLowerCase();
-    let s = 0;
-    for (const c of CATS) {
-      for (const w of c.words) if (t.includes(w)) s += 1;
-    }
-    return { a, s };
-  }).sort((x, y) => y.s - x.s);
-
-  const top = scored.filter(x => x.s > 0).slice(0, 4);
-
-  if (top.length === 0) {
-    drivers.textContent = "No strong drivers detected (which is either good news… or the algorithm is sleeping).";
-    drivers.classList.add("muted");
+  const top = scored.slice(0, 5);
+  if (top.length === 0){
+    const d = document.createElement("div");
+    d.className = "muted";
+    d.textContent = "No drivers found (filters too strict or empty feed).";
+    wrap.appendChild(d);
     return;
   }
 
-  for (const item of top) {
-    const a = item.a;
-
+  for (const a of top){
     const box = document.createElement("div");
-    box.className = "driverItem";
+    box.className = "driver";
 
-    const title = document.createElement("div");
-    title.className = "driverTitle";
-    title.textContent = a.title || "(untitled)";
+    const t = document.createElement("div");
+    t.className = "driverTitle";
+    t.textContent = a.title;
 
-    const meta = document.createElement("div");
-    meta.className = "driverMeta";
-    const domain = a.domain || cleanDomain(a.url || "");
-    meta.textContent = `${domain || "source"} · ${a.language || "—"}`;
+    const m = document.createElement("div");
+    m.className = "driverMeta";
+    m.textContent = `${a.domain} • ${a.lang || "—"}${a.country ? " • " + a.country : ""}`;
 
-    box.appendChild(title);
-    box.appendChild(meta);
-
-    drivers.appendChild(box);
+    box.appendChild(t);
+    box.appendChild(m);
+    wrap.appendChild(box);
   }
 }
 
-function renderStories(articles) {
+function renderStories(scored){
   const wrap = $("stories");
-  if (!wrap) return;
   wrap.innerHTML = "";
 
-  const list = (articles || []).slice(0, 16);
-
-  if (list.length === 0) {
+  const list = scored.slice(0, 14);
+  if (list.length === 0){
     const empty = document.createElement("div");
     empty.className = "muted";
     empty.textContent = "No articles returned.";
@@ -256,13 +345,7 @@ function renderStories(articles) {
     return;
   }
 
-  // remove duplicates by title
-  const seen = new Set();
-  for (const a of list) {
-    const key = (a.title || "").trim().toLowerCase();
-    if (key && seen.has(key)) continue;
-    seen.add(key);
-
+  for (const a of list){
     const link = document.createElement("a");
     link.className = "story";
     link.href = a.url || "#";
@@ -271,12 +354,11 @@ function renderStories(articles) {
 
     const title = document.createElement("div");
     title.className = "storyTitle";
-    title.textContent = a.title || "(untitled)";
+    title.textContent = a.title;
 
     const meta = document.createElement("div");
     meta.className = "storyMeta";
-    const domain = a.domain || cleanDomain(a.url || "");
-    meta.textContent = `${domain || "source"} · ${a.language || "—"}`;
+    meta.textContent = `${a.domain} • ${a.lang || "—"}`;
 
     link.appendChild(title);
     link.appendChild(meta);
@@ -284,95 +366,72 @@ function renderStories(articles) {
   }
 }
 
-function filterArticles(all) {
-  // strict: English + US
-  let filtered = (all || []).filter(a =>
-    a &&
-    (!a.language || a.language === WANT_LANG) &&
-    (!a.sourcecountry || a.sourcecountry === WANT_COUNTRY)
-  );
-
-  // fallback: English anywhere if too few
-  if (filtered.length < 10) {
-    filtered = (all || []).filter(a => a && (!a.language || a.language === WANT_LANG));
-  }
-
-  // fallback: everything
-  return filtered.length ? filtered : (all || []);
-}
-
-/* ---------------------------
-   Main loader
----------------------------- */
-
-async function loadHeadlines() {
+async function refresh(){
   show("errorBox", false);
-  show("aboutBox", false);
-
   setText("statusPill", "Loading…");
+  $("statusPill").classList.remove("muted");
 
-  const url =
-    `${PROXY_BASE}/gdelt` +
-    `?query=${encodeURIComponent(QUERY)}` +
-    `&mode=${encodeURIComponent(MODE)}` +
-    `&format=${encodeURIComponent(FORMAT)}` +
-    `&maxrecords=${encodeURIComponent(String(MAXRECORDS))}` +
-    `&timespan=${encodeURIComponent(TIMESPAN)}` +
-    `&t=${Date.now()}`;
+  const url = gdeltURL(DEFAULT_QUERY);
+  const res = await fetchJSON(url);
 
-  const result = await fetchJSON(url);
-  const payload = result?.json ?? { error: "No JSON payload" };
-
-  const norm = normalizePayload(payload);
-
-  if (norm.meta.kind === "error") {
-    setText("statusPill", "Error");
+  const payload = normalizePayload(res.json);
+  if (!res.ok || !payload.ok){
     show("errorBox", true);
-    setText("errorText", explainError(norm.meta, url));
-    setText("doomScore", "—");
-    setText("doomLabel", "No data");
-    setText("updatedPill", "Updated: —");
-    setText("filterPill", "Filter: —");
-    setText("samplePill", "Sample: —");
-    renderBreakdown(Object.fromEntries(CATS.map(c => [c.key, 0])));
-    $("drivers").textContent = "—";
-    renderStories([]);
+    const keys = payload.keys ? payload.keys.join(", ") : "";
+    const routes = payload.routes ? `Routes: ${payload.routes.join(", ")}` : "";
+    const example = payload.example ? `Example: ${payload.example}` : "";
+    const tried = `Tried: ${url}`;
+    setText("errorText",
+      `No articles returned. Response keys: ${keys}\n` +
+      `Error: ${payload.error || "Request failed"}\n` +
+      (routes ? routes + "\n" : "") +
+      (example ? example + "\n" : "") +
+      tried
+    );
+
+    setText("statusPill", "No articles");
+    $("statusPill").classList.add("muted");
     return;
   }
 
-  const all = norm.articles || [];
-  const articles = filterArticles(all);
+  const articles = payload.articles || [];
+  const scored = scoreArticles(articles);
+  const { doom, catScores } = computeDoom(scored);
 
-  // UI meta pills
-  setText("statusPill", "OK");
+  // Header
   setText("updatedPill", `Updated: ${nowStamp()}`);
-  setText("filterPill", `Filter: ${WANT_LANG} / ${WANT_COUNTRY}`);
-  setText("samplePill", `Sample: ${articles.length} headlines`);
+  setText("statusPill", "OK");
+  $("statusPill").classList.add("muted");
+  setText("samplePill", `Sample: ${scored.length} headlines`);
 
-  // Doom scoring + rendering
-  const scored = scoreCategories(articles);
-  setText("doomScore", String(scored.overall));
-  setText("doomLabel", labelFor(scored.overall));
+  // Doom index
+  setText("doomValue", String(doom));
+  setText("doomLabel", doomLabel(doom));
+  $("doomFill").style.width = `${doom}%`;
+  paintFill($("doomFill"), doom);
 
-  setFill($("doomFill"), scored.overall);
-  renderBreakdown(scored.catPoints);
-  renderDrivers(articles, scored.catHits);
+  // Tag pill
+  const tag = colorForScore(doom);
+  setText("doomTag", tag === "fire" ? "ON FIRE" : tag.toUpperCase());
 
-  // Stories list
-  renderStories(articles);
+  // Breakdown meters + drivers + stories
+  renderMeters(catScores);
+  renderDrivers(scored);
+  renderStories(scored);
 }
 
-function wireUI() {
+function openAbout(){ show("aboutBox", true); }
+function closeAbout(){ show("aboutBox", false); }
+
+function init(){
   setText("version", VERSION);
 
-  $("refreshBtn")?.addEventListener("click", loadHeadlines);
-  $("aboutBtn")?.addEventListener("click", () => {
-    const box = $("aboutBox");
-    const isOpen = box && box.style.display !== "none" && box.style.display !== "";
-    show("aboutBox", !isOpen);
-  });
+  $("refreshBtn").addEventListener("click", refresh);
+  $("aboutBtn").addEventListener("click", openAbout);
+  $("closeAboutBtn").addEventListener("click", closeAbout);
+
+  // Initial load
+  refresh();
 }
 
-// Boot
-wireUI();
-loadHeadlines();
+init();
