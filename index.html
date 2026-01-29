@@ -11,52 +11,74 @@
 <body>
   <div class="wrap">
     <div class="kicker">GLOBAL BRIEFING</div>
-    <h1>Doomroom<br/>News</h1>
-    <div class="sub">Doom Index (Highly Scientific)</div>
 
-    <div class="row">
-      <button id="refreshBtn">Refresh</button>
-      <button id="aboutBtn">About</button>
-      <span class="pill" id="statusPill">Idle</span>
-      <span class="pill" id="updatedPill">Updated: —</span>
-    </div>
-
-    <!-- Doom Meter card -->
-    <div class="card" id="doomCard">
-      <div class="cardTitle">DOOM METER</div>
-      <div class="doomWrap">
-        <div class="doomScore" id="doomScore">—</div>
-        <div class="doomLabel" id="doomLabel">Waiting for headlines…</div>
+    <div class="topRow">
+      <div>
+        <div class="brand">Doomroom News</div>
+        <div class="sub">Doom Index (Highly Scientific)</div>
       </div>
-      <div class="doomBar" aria-hidden="true">
-        <div class="doomFill" id="doomFill"></div>
+
+      <div class="controls">
+        <button id="refreshBtn">Refresh</button>
+        <button class="ghost" id="aboutBtn">About</button>
       </div>
-      <div class="muted" id="doomMeta" style="margin-top:10px;"></div>
     </div>
 
-    <!-- Errors -->
-    <div class="card" id="errorBox" style="display:none">
-      <div class="err"><b>!!</b> Error loading headlines.</div>
-      <div class="muted" id="errorText" style="margin-top:8px;"></div>
+    <!-- HERO METER -->
+    <div class="card hero">
+      <div class="heroGrid">
+        <div class="heroLeft">
+          <div class="bigNumber" id="doomScore">—</div>
+          <div class="bigLabel" id="doomLabel">Loading…</div>
+
+          <div class="meter">
+            <div class="meterTrack">
+              <div class="meterFill" id="doomFill"></div>
+            </div>
+            <div class="metaRow">
+              <div class="pill" id="statusPill">Idle</div>
+              <div class="pill" id="updatedPill">Updated: —</div>
+              <div class="pill" id="filterPill">Filter: —</div>
+              <div class="pill" id="samplePill">Sample: —</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="heroRight">
+          <div class="sectionTitle">DOOM BREAKDOWN</div>
+          <div id="breakdown" class="breakdown"></div>
+
+          <div class="divider"></div>
+
+          <div class="sectionTitle">TOP DRIVERS</div>
+          <div id="drivers" class="drivers muted">—</div>
+        </div>
+      </div>
     </div>
 
-    <!-- Stories -->
+    <!-- ERRORS -->
+    <div class="card errorCard" id="errorBox" style="display:none">
+      <div class="errTitle"><b>!!</b> Error loading headlines</div>
+      <pre class="errText" id="errorText"></pre>
+    </div>
+
+    <!-- STORIES -->
     <div class="card">
-      <div class="cardTitle">LATEST STORIES</div>
-      <div class="grid" id="stories"></div>
+      <div class="sectionTitle">LATEST STORIES</div>
+      <div id="stories" class="stories"></div>
     </div>
 
-    <!-- About -->
+    <!-- ABOUT -->
     <div class="card" id="aboutBox" style="display:none">
-      <div class="cardTitle">ABOUT</div>
+      <div class="sectionTitle">ABOUT</div>
       <p class="muted" style="margin-top:10px;">
-        This app is satire. It uses real news headlines and applies an extremely questionable “doom” scoring algorithm.
-        It is not a forecast, prophecy, or financial advice. It is vibes with math.
+        This app is satire. It uses real headlines and a highly questionable “doom” scoring algorithm.
+        It is not a forecast, prophecy, or advice. It’s vibes with math.
       </p>
       <p class="muted"><small>Sources: GDELT 2.1 via your Cloudflare Worker.</small></p>
     </div>
 
-    <div class="muted" style="margin-top:14px;">
+    <div class="footer muted">
       <small id="version"></small>
     </div>
   </div>
