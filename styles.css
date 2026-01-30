@@ -138,7 +138,7 @@ button:hover{ border-color: rgba(255,255,255,.22); }
   height: 100%;
   width: 0%;
   border-radius: 999px;
-  min-width: 2px; /* prevents dot */
+  min-width: 2px;
 }
 
 .sectionTitle{
@@ -170,6 +170,7 @@ button:hover{ border-color: rgba(255,255,255,.22); }
   height:100%;
   width:0%;
   border-radius:999px;
+  min-width: 2px; /* ✅ makes tiny non-zero values visible */
 }
 
 .driverBox{
