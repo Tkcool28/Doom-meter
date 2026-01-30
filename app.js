@@ -1,27 +1,17 @@
-/* Doomroom News — app.js (v3.1.9)
-   Goal:
-   - English only when possible
-   - NEVER end up with 25→0 blank screen because heuristics guessed wrong
-
-   Strategy:
-   1) If article.language exists:
-        - keep only en
-        - drop non-en
-   2) If language is missing (common):
-        - use VERY LIGHT heuristic:
-            - reject obvious non-latin scripts only
-            - otherwise allow (because “english detection” is unreliable)
-   3) If filtering results in 0:
-        - show unfiltered list (but label it clearly)
+/* Doomroom News — app.js (v3.2.1)
+   STRICT ENGLISH ONLY:
+   - Keep ONLY items where article.language says English/en.
+   - If language is missing/unknown -> DROP (no guessing, no fallback).
+   - This guarantees you never see Chinese/Russian/Spanish/etc again.
 */
 
-const VERSION = "v3.1.9";
+const VERSION = "v3.2.1";
 
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
 const ROUTE = "gdelt";
 
 const DEFAULT_QUERY = "world";
-const MAX_RECORDS = 60;
+const MAX_RECORDS = 80;   // pull more so we have a better chance of getting English
 const TIMESPAN = "7d";
 
 const CATS = [
@@ -35,9 +25,8 @@ const CATS = [
   { key: "misc", label: "Misc. Chaos", keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] }
 ];
 
-// ---------- DOM helpers ----------
+// ---------- DOM ----------
 const S = (id) => document.getElementById(id);
-
 const el = {
   refresh: S("btnRefresh"),
   about: S("btnAbout"),
@@ -54,7 +43,6 @@ const el = {
   drivers: S("drivers"),
   stories: S("stories"),
   ver: S("verText"),
-
   aboutOverlay: S("aboutOverlay"),
   closeAbout: S("btnCloseAbout"),
   closeAbout2: S("btnCloseAbout2"),
@@ -63,9 +51,9 @@ const el = {
 
 function safeText(node, txt) { if (node) node.textContent = String(txt ?? ""); }
 function safeHTML(node, html) { if (node) node.innerHTML = html; }
-function nowStamp() { try { return new Date().toLocaleString(); } catch { return String(new Date()); } }
+function nowStamp(){ try { return new Date().toLocaleString(); } catch { return String(new Date()); } }
 
-// ---------- About overlay ----------
+// About overlay
 function showAbout(){ el.aboutOverlay?.classList.remove("hidden"); }
 function hideAbout(){ el.aboutOverlay?.classList.add("hidden"); }
 function wireAbout() {
@@ -75,7 +63,7 @@ function wireAbout() {
   el.aboutOverlay?.addEventListener("click", (e) => { if (e.target === el.aboutOverlay) hideAbout(); });
 }
 
-// ---------- Dedupe ----------
+// Dedupe
 function dedupeArticles(list) {
   const seen = new Set();
   const out = [];
@@ -96,35 +84,26 @@ function dedupeArticles(list) {
   return out;
 }
 
-// ---------- English filtering (safe, never blank) ----------
-// Only hard-reject obvious non-latin scripts. Latin-language detection is unreliable without proper metadata.
-const NON_LATIN = /[\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0900-\u097F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/;
-
-function filterEnglishPreferred(list) {
-  const withLang = list.filter(a => String(a.language || "").trim() !== "");
-  const withoutLang = list.filter(a => String(a.language || "").trim() === "");
-
-  // If language metadata exists, trust it strongly.
-  const enFromLang = withLang.filter(a => {
-    const l = String(a.language).trim().toLowerCase();
-    return l === "en" || l.startsWith("en-");
-  });
-
-  // For items with no language: only reject obvious non-latin scripts.
-  const latinOnly = withoutLang.filter(a => !NON_LATIN.test(String(a.title || "")));
-
-  return {
-    preferred: [...enFromLang, ...latinOnly],
-    hadLangMeta: withLang.length > 0
-  };
+// ---------- STRICT ENGLISH ONLY ----------
+// Accept language values like: "English", "ENGLISH", "en", "en-US", "en_GB"
+function isEnglishLang(lang) {
+  const l = String(lang || "").trim().toLowerCase();
+  if (!l) return false; // strict means unknown = reject
+  if (l === "english") return true;
+  if (l === "en") return true;
+  if (l.startsWith("en-") || l.startsWith("en_")) return true;
+  return false;
 }
 
-// ---------- Doom scoring ----------
+function keepEnglishOnly(a) {
+  return isEnglishLang(a.language);
+}
+
+// Doom scoring
 function scoreHeadline(title) {
   const t = String(title || "").toLowerCase();
   const scores = {};
   for (const c of CATS) scores[c.key] = 0;
-
   for (const c of CATS) {
     for (const kw of c.keywords) if (t.includes(kw)) scores[c.key] += 3;
     scores[c.key] = Math.min(scores[c.key], 12);
@@ -153,7 +132,7 @@ function labelFromPct(p) {
   return "Chill (suspiciously).";
 }
 
-// ---------- Fetch ----------
+// Fetch
 async function fetchJSON(url) {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -165,28 +144,24 @@ async function fetchViaWorker(query) {
   const max = encodeURIComponent(String(MAX_RECORDS));
   const span = encodeURIComponent(TIMESPAN);
 
-  const urlsLang = [
+  const urls = [
     `${PROXY_BASE}/${ROUTE}?query=${q}&max=${max}&timespan=${span}&lang=en`,
     `${PROXY_BASE}/${ROUTE}?q=${q}&max=${max}&timespan=${span}&lang=en`,
-    `${PROXY_BASE}/${ROUTE}?g=${q}&max=${max}&timespan=${span}&lang=en`
-  ];
-
-  const urlsNoLang = [
+    `${PROXY_BASE}/${ROUTE}?g=${q}&max=${max}&timespan=${span}&lang=en`,
     `${PROXY_BASE}/${ROUTE}?query=${q}&max=${max}&timespan=${span}`,
     `${PROXY_BASE}/${ROUTE}?q=${q}&max=${max}&timespan=${span}`,
     `${PROXY_BASE}/${ROUTE}?g=${q}&max=${max}&timespan=${span}`
   ];
 
   let lastErr = null;
-  for (const u of urlsLang) { try { return await fetchJSON(u); } catch (e) { lastErr = e; } }
-  for (const u of urlsNoLang) { try { return await fetchJSON(u); } catch (e) { lastErr = e; } }
+  for (const u of urls) {
+    try { return await fetchJSON(u); }
+    catch (e) { lastErr = e; }
+  }
   throw lastErr || new Error("Worker fetch failed");
 }
 
-// ---------- Render ----------
-function setStatus(msg) { safeText(el.status, msg); }
-function setUpdated(msg) { safeText(el.updated, `Updated: ${msg}`); }
-
+// Render (matches your CSS)
 function renderBars(catTotals) {
   if (!el.breakdown) return;
   const headlineCount = window.__HEADLINE_COUNT__ || 1;
@@ -222,8 +197,9 @@ function renderDrivers(topDrivers) {
 
 function renderStories(items) {
   if (!el.stories) return;
+
   if (!items.length) {
-    safeHTML(el.stories, `<div class="muted">No stories found.</div>`);
+    safeHTML(el.stories, `<div class="muted">No stories found. (No English articles returned.)</div>`);
     return;
   }
 
@@ -234,7 +210,7 @@ function renderStories(items) {
     return `
       <a class="story" href="${url}" target="_blank" rel="noopener noreferrer">
         <div class="storyTitle">${escapeHtml(title)}</div>
-        <div class="storyMeta">${escapeHtml(source)} • ${escapeHtml(a.language || "—")} • Global</div>
+        <div class="storyMeta">${escapeHtml(source)} • English • Global</div>
       </a>
     `;
   }).join("");
@@ -251,10 +227,11 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
-// ---------- Main pipeline ----------
+// Main
 async function run(query = DEFAULT_QUERY) {
-  setStatus("Reading the omens…");
+  safeText(el.status, "Reading the omens…");
   safeText(el.sample, "Sample: —");
+  safeText(el.filterPill, "Filter: English ONLY / Global");
 
   try {
     const data = await fetchViaWorker(query);
@@ -266,28 +243,12 @@ async function run(query = DEFAULT_QUERY) {
     const raw = dedupeArticles(rawList);
     const before = raw.length;
 
-    const { preferred, hadLangMeta } = filterEnglishPreferred(raw);
-
-    // If preferred is empty, DO NOT BLANK THE APP. Show raw list and warn.
-    let list = preferred;
-    let filterNote = "English preferred / Global";
-
-    if (list.length === 0 && raw.length > 0) {
-      list = raw;
-      filterNote = "Global (English filter unavailable)";
-    } else if (hadLangMeta) {
-      filterNote = "English only (by metadata) / Global";
-    } else {
-      filterNote = "English preferred (best-effort) / Global";
-    }
-
-    safeText(el.filterPill, `Filter: ${filterNote}`);
-
+    const list = raw.filter(keepEnglishOnly);
     const after = list.length;
+
     safeText(el.sample, `Sample: ${after} headlines`);
     window.__HEADLINE_COUNT__ = Math.max(1, after);
 
-    // Score doom
     const totals = {};
     for (const c of CATS) totals[c.key] = 0;
 
@@ -301,14 +262,13 @@ async function run(query = DEFAULT_QUERY) {
     }
 
     const doomScore = Object.values(totals).reduce((s, n) => s + n, 0);
-    const doomPct = pctForOverall(doomScore, window.__HEADLINE_COUNT__);
+    const doomPct = after ? pctForOverall(doomScore, after) : 0;
     const doomCls = classFromPct(doomPct);
     const doomLabel = labelFromPct(doomPct);
 
     safeText(el.doomNum, String(doomPct));
     safeText(el.doomLabel, doomLabel);
     safeText(el.doomTag, "Take a breath. The universe is weird.");
-
     if (el.doomFill) {
       el.doomFill.className = `fill ${doomCls}`;
       el.doomFill.style.width = `${doomPct}%`;
@@ -326,13 +286,13 @@ async function run(query = DEFAULT_QUERY) {
     renderDrivers(topDrivers);
     renderStories(list.slice(0, 12));
 
-    setStatus(`Omens readable. (${before}→${after})`);
-    setUpdated(nowStamp());
+    safeText(el.status, after === 0 ? `No English headlines returned. (${before}→0)` : `Omens readable. (${before}→${after})`);
+    safeText(el.updated, `Updated: ${nowStamp()}`);
     safeText(el.okPill, "OK");
   } catch (err) {
     const msg = (err && err.message) ? err.message : String(err);
-    setStatus(`Omen failure: ${msg}`);
-    setUpdated(nowStamp());
+    safeText(el.status, `Omen failure: ${msg}`);
+    safeText(el.updated, `Updated: ${nowStamp()}`);
     safeText(el.okPill, "OK");
     safeText(el.sample, "Sample: 0 headlines");
     renderStories([]);
