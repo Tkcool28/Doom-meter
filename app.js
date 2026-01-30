@@ -1,14 +1,12 @@
-/* Doomroom News — app.js (v3.2.2)
-   Fixes:
-   - Builds a "doom query" so GDELT results match your doom keywords (not random stuff)
-   - Bars ALWAYS render (uses your existing DOM IDs)
-   - Uses worker for English filtering; also blocks obvious non-Latin scripts as safety net
-   - Better “what happened” status text
+/* Doomroom News — app.js (v3.2.3)
+   - Uses a SIMPLE doom query that reliably returns results from GDELT
+   - Treats Worker as the English filter (no fragile "strict English" in browser)
+   - Bars always render
 */
 
-const VERSION = "v3.2.2";
+const VERSION = "v3.2.3";
 
-// ✅ Your worker
+// Your worker
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
 const ROUTE = "gdelt";
 
@@ -19,7 +17,7 @@ const TIMESPAN = "7d";
 // Doom categories
 const CATS = [
   { key: "conflict", label: "Conflict Heat", keywords: ["war","strike","attack","missile","drone","airstrike","invasion","ceasefire","shelling","hostage","terror","bomb","blast"] },
-  { key: "climate", label: "Climate Weirdness", keywords: ["heat","wildfire","flood","hurricane","cyclone","storm","drought","record heat","evacuation","blaze","tornado","smoke"] },
+  { key: "climate", label: "Climate Weirdness", keywords: ["heat","wildfire","flood","hurricane","cyclone","storm","drought","evacuation","tornado","smoke"] },
   { key: "econ", label: "Economic Drama", keywords: ["inflation","layoff","crash","default","debt","tariff","shutdown","market","bank","recession","strike"] },
   { key: "democracy", label: "Democracy Melting", keywords: ["election","coup","protest","riot","authoritarian","fraud","ban","court","impeach","corruption","arrested","martial law"] },
   { key: "cyber", label: "Cyber Chaos", keywords: ["hack","breach","ransomware","outage","leak","cyber","malware","phishing","ddos"] },
@@ -27,6 +25,10 @@ const CATS = [
   { key: "space", label: "Space Rocks", keywords: ["asteroid","meteor","comet","space debris","nasa","impact","near-earth","solar flare"] },
   { key: "misc", label: "Misc. Chaos", keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] }
 ];
+
+// ✅ Simple + reliable for GDELT (avoid fancy quotes / too-long strings)
+const DEFAULT_QUERY =
+  "(war OR attack OR missile OR drone OR nuclear OR election OR protest OR coup OR inflation OR layoff OR ransomware OR breach OR wildfire OR flood OR hurricane)";
 
 // ---------- DOM helpers ----------
 const S = (id) => document.getElementById(id);
@@ -47,6 +49,7 @@ const el = {
   drivers: S("drivers"),
   stories: S("stories"),
   ver: S("verText"),
+
   aboutOverlay: S("aboutOverlay"),
   closeAbout: S("btnCloseAbout"),
   closeAbout2: S("btnCloseAbout2"),
@@ -64,7 +67,8 @@ function safeHTML(node, html) {
 }
 
 function nowStamp() {
-  try { return new Date().toLocaleString(); } catch { return String(new Date()); }
+  try { return new Date().toLocaleString(); }
+  catch { return String(new Date()); }
 }
 
 function escapeHtml(s) {
@@ -88,31 +92,6 @@ function wireAbout() {
     if (e.target === el.aboutOverlay) hideAbout();
   });
 }
-
-// ---------- English safety net (worker already filters, this blocks obvious non-Latin) ----------
-const NON_LATIN = /[\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0900-\u097F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/;
-function keepEnglishish(title) {
-  const t = String(title || "").trim();
-  if (!t) return false;
-  if (NON_LATIN.test(t)) return false;
-  return true;
-}
-
-// ---------- Build a "doom query" so results match your doom keywords ----------
-function buildDoomQuery() {
-  // Unique keywords across all categories
-  const set = new Set();
-  for (const c of CATS) for (const k of c.keywords) set.add(k);
-
-  // Keep it a reasonable size (GDELT queries can be touchy).
-  // Pick up to 24 strongest terms.
-  const words = Array.from(set).slice(0, 24);
-
-  // OR query: (war OR attack OR inflation ...)
-  return "(" + words.map(w => `"${w}"`).join(" OR ") + ")";
-}
-
-const DEFAULT_QUERY = buildDoomQuery();
 
 // ---------- Doom scoring ----------
 function scoreHeadline(title) {
@@ -144,13 +123,12 @@ function labelFromPct(p) {
   return "Chill (suspiciously).";
 }
 
-// Normalize doom % by “per article max”
-function computeOverallPct(totals, articleCount) {
-  const n = Math.max(1, articleCount);
+// Normalize overall by article count so you don’t get stuck at 0
+function computeOverallPct(totals, n) {
+  const count = Math.max(1, n);
   const sum = Object.values(totals).reduce((a, b) => a + b, 0);
-  const perArticle = sum / n;
-
-  const maxPerArticle = CATS.length * 12; // each category max 12 in our scoring
+  const perArticle = sum / count;
+  const maxPerArticle = CATS.length * 12;
   return Math.max(0, Math.min(100, Math.round((perArticle / maxPerArticle) * 100)));
 }
 
@@ -165,8 +143,6 @@ async function fetchViaWorker(query) {
   const q = encodeURIComponent(query);
   const max = encodeURIComponent(String(MAX_RECORDS));
   const span = encodeURIComponent(TIMESPAN);
-
-  // Worker supports max + timespan + query
   const url = `${PROXY_BASE}/${ROUTE}?query=${q}&max=${max}&timespan=${span}`;
   return await fetchJSON(url);
 }
@@ -178,12 +154,10 @@ function setUpdated(msg) { safeText(el.updated, `Updated: ${msg}`); }
 function renderBars(catTotals) {
   if (!el.breakdown) return;
 
-  // Uses your existing markup structure used by your CSS: breakItem / breakBar / fill
   const rows = CATS.map(c => {
     const val = catTotals[c.key] || 0;
 
-    // Convert totals -> percent using a soft cap (keeps bars visible)
-    // This avoids “everything looks empty” when totals are small.
+    // Soft cap for display: makes bars visible even for small totals
     const pct = Math.max(0, Math.min(100, Math.round((val / 30) * 100)));
     const cls = classFromPct(pct);
 
@@ -214,14 +188,13 @@ function renderDrivers(topDrivers) {
 
 function renderStories(items) {
   if (!el.stories) return;
-
   if (!items.length) {
     safeHTML(el.stories, `<div class="muted">No stories found.</div>`);
     return;
   }
 
   const cards = items.map(a => {
-    const source = a.domain || a.source || "source unknown";
+    const source = a.domain || "source unknown";
     const title = a.title || "(untitled)";
     const url = a.url || a.url_mobile || "#";
 
@@ -239,30 +212,25 @@ function renderStories(items) {
 // ---------- Main ----------
 async function run(query = DEFAULT_QUERY) {
   setStatus("Reading the omens…");
-  safeText(el.sample, "Sample: —");
   safeText(el.okPill, "OK");
   safeText(el.filterPill, "Filter: English ONLY / Global");
+  safeText(el.sample, "Sample: —");
+  setUpdated(nowStamp());
 
   try {
     const data = await fetchViaWorker(query);
-
-    // Worker returns { articles: [...] }
     const raw = Array.isArray(data) ? data : (data.articles || []);
-    const listAll = raw
+
+    const list = raw
       .map(a => ({
         title: a?.title || "",
         url: a?.url || a?.url_mobile || "",
-        domain: a?.domain || "",
-        language: a?.language || ""
+        domain: a?.domain || a?.source || "",
       }))
       .filter(a => a.title && a.url);
 
-    // Safety net: block obvious non-Latin (worker already tries)
-    const list = listAll.filter(a => keepEnglishish(a.title));
-
     safeText(el.sample, `Sample: ${list.length} headlines`);
 
-    // Doom totals
     const totals = {};
     for (const c of CATS) totals[c.key] = 0;
 
@@ -281,11 +249,11 @@ async function run(query = DEFAULT_QUERY) {
 
     const doomPct = computeOverallPct(totals, list.length);
     const doomCls = classFromPct(doomPct);
-    const doomLabel = labelFromPct(doomPct);
 
     safeText(el.doomNum, String(doomPct));
-    safeText(el.doomLabel, doomLabel);
+    safeText(el.doomLabel, labelFromPct(doomPct));
     safeText(el.doomTag, "Take a breath. The universe is weird.");
+
     if (el.doomFill) {
       el.doomFill.className = `fill ${doomCls}`;
       el.doomFill.style.width = `${doomPct}%`;
@@ -293,7 +261,6 @@ async function run(query = DEFAULT_QUERY) {
 
     renderBars(totals);
 
-    // Drivers
     const driverCounts = {};
     for (const k of keywordHits) driverCounts[k] = (driverCounts[k] || 0) + 1;
     const topDrivers = Object.entries(driverCounts)
@@ -304,23 +271,17 @@ async function run(query = DEFAULT_QUERY) {
     renderDrivers(topDrivers);
     renderStories(list.slice(0, 12));
 
-    // Status
-    const proxyInfo = data?.doomProxy;
-    if (proxyInfo && typeof proxyInfo === "object") {
-      const eng = proxyInfo.englishFound ?? "?";
-      const ret = proxyInfo.returned ?? list.length;
-      setStatus(`Omens readable. (English ${eng} → ${ret})`);
+    const info = data?.doomProxy;
+    if (info) {
+      setStatus(`Omens readable. (English: ${info.englishFound ?? "?"} → ${info.returned ?? list.length})`);
     } else {
       setStatus(`Omens readable. (${list.length})`);
     }
 
     setUpdated(nowStamp());
-    safeText(el.okPill, "OK");
 
   } catch (err) {
-    const msg = err?.message ? err.message : String(err);
-    setStatus(`Omen failure: ${msg}`);
-    setUpdated(nowStamp());
+    setStatus(`Omen failure: ${err?.message || String(err)}`);
     safeText(el.sample, "Sample: 0 headlines");
     renderStories([]);
     renderDrivers([]);
@@ -337,7 +298,6 @@ function wireRefresh() {
 window.addEventListener("DOMContentLoaded", () => {
   safeText(el.ver, VERSION);
   safeText(el.aboutVersion, VERSION);
-
   wireAbout();
   wireRefresh();
   run(DEFAULT_QUERY);
