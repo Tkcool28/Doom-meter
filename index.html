@@ -12,7 +12,8 @@
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 
-  <link rel="stylesheet" href="./styles.css" />
+  <!-- ✅ HARD CACHE BUST -->
+  <link rel="stylesheet" href="./styles.css?v=3220" />
 </head>
 
 <body>
@@ -77,7 +78,7 @@
     <div class="overlayCard">
       <div class="overlayTitle">☄️ Doomroom News</div>
       <div class="overlaySub muted">
-        <span id="aboutVersion">v—</span> • DoomWorks Interstellar • DoomWorks Interstellar
+        <span id="aboutVersion">v—</span> • DoomWorks Interstellar
       </div>
 
       <p>
@@ -96,13 +97,16 @@
   </div>
 
   <noscript>This app needs JavaScript to read the omens.</noscript>
-  <script src="./app.js" defer></script>
+
+  <!-- ✅ HARD CACHE BUST -->
+  <script src="./app.js?v=3220" defer></script>
 
   <script>
     (function () {
       if (!("serviceWorker" in navigator)) return;
       window.addEventListener("load", function () {
-        navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(function(){});
+        // ✅ HARD CACHE BUST SERVICE WORKER TOO
+        navigator.serviceWorker.register("./sw.js?v=3220", { scope: "./" }).catch(function(){});
       });
     })();
   </script>
