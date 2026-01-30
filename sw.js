@@ -1,16 +1,17 @@
-// Doomroom News — sw.js (v3.2.2)
-// - Cache static shell
+// Doomroom News — sw.js (v3.2.3)
+// - Cache static shell for /Doom-meter/
 // - Network-first for app.js/styles.css (including ?v=...)
 // - Never cache worker/news responses
 
-const CACHE_NAME = "doomroom-static-v3.2.2";
+const CACHE_NAME = "doomroom-static-v3.2.3";
+const PROXY_HOST = "doom-proxy.toddkirschman.workers.dev";
 
-// NOTE: include the versioned URLs so offline shell still works
+// IMPORTANT: must match the ?v= value you used in index.html
 const STATIC_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css?v=3220",
-  "./app.js?v=3220",
+  "./styles.css?v=3230",
+  "./app.js?v=3230",
   "./manifest.webmanifest",
   "./icons/apple-touch-icon.png",
   "./icons/doomroom-192.png",
@@ -19,11 +20,10 @@ const STATIC_ASSETS = [
   "./icons/favicon-16.png",
 ];
 
-// Proxy host so we never cache it
-const PROXY_HOST = "doom-proxy.toddkirschman.workers.dev";
-
 self.addEventListener("install", (event) => {
-  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)));
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
+  );
   self.skipWaiting();
 });
 
@@ -41,10 +41,11 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
 
-  // Never cache cross-origin requests (especially the proxy)
+  // Never cache cross-origin requests (proxy/news)
   if (url.origin !== self.location.origin) {
     if (url.hostname === PROXY_HOST) {
       event.respondWith(fetch(req, { cache: "no-store" }));
+      return;
     }
     return;
   }
@@ -64,8 +65,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // app.js + styles.css: network-first so updates land fast (works with ?v=...)
-  if (url.pathname.endsWith("/app.js") || url.pathname.endsWith("/styles.css") || url.pathname.endsWith("/sw.js")) {
+  // app.js + styles.css: network-first (works with ?v=...)
+  if (
+    url.pathname.endsWith("/app.js") ||
+    url.pathname.endsWith("/styles.css") ||
+    url.pathname.endsWith("/sw.js")
+  ) {
     event.respondWith((async () => {
       try {
         const fresh = await fetch(req, { cache: "no-store" });
