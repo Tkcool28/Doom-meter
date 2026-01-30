@@ -1,15 +1,17 @@
 /* Doomroom News — app.js (v3.1.6)
    Fixes:
+   - Worker route typo fixed: ROUTE "gdeit" -> "gdelt"
    - Worker fetch: tries with &lang=en first, then falls back to no-lang URLs
    - English filter: no longer "hint word" strict; only blocks obvious non-Latin scripts
    - Better debug in the status pill (shows why it failed)
+   - Doom % math fixed: percent is now normalized by headline count + category limits
 */
 
 const VERSION = "v3.1.6";
 
 // Your worker (keep as-is)
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
-const ROUTE = "gdeit";
+const ROUTE = "gdelt"; // ✅ FIX: was "gdeit"
 
 // Content knobs
 const DEFAULT_QUERY = "world";
@@ -17,7 +19,6 @@ const MAX_RECORDS = 25;
 const TIMESPAN = "7d";
 
 // Doom categories
-const CATEGORY_MAX = 30;
 const CATS = [
   { key: "conflict", label: "Conflict Heat", keywords: ["war","strike","attack","missile","drone","airstrike","invasion","ceasefire","shelling","hostage","terror","bomb","blast"] },
   { key: "climate", label: "Climate Weirdness", keywords: ["heat","wildfire","flood","hurricane","cyclone","storm","drought","record heat","evacuation","blaze","tornado","smoke"] },
@@ -141,13 +142,23 @@ function scoreHeadline(title) {
     for (const kw of c.keywords) {
       if (t.includes(kw)) scores[c.key] += 3;
     }
-    scores[c.key] = Math.min(scores[c.key], 12);
+    scores[c.key] = Math.min(scores[c.key], 12); // per-category per-headline cap
   }
   return scores;
 }
 
-function pctFromScore(score) {
-  return Math.max(0, Math.min(100, Math.round((score / CATEGORY_MAX) * 100)));
+// ✅ FIX: Percent math should depend on headline count and known caps.
+// Per headline: each category max is 12.
+// Overall max per headline is (CATS.length * 12).
+function pct(score, max) {
+  if (!max || max <= 0) return 0;
+  return Math.max(0, Math.min(100, Math.round((score / max) * 100)));
+}
+function pctForCategory(catScore, headlineCount) {
+  return pct(catScore, headlineCount * 12);
+}
+function pctForOverall(totalScore, headlineCount) {
+  return pct(totalScore, headlineCount * CATS.length * 12);
 }
 
 function classFromPct(p) {
@@ -184,7 +195,7 @@ async function fetchViaWorker(query) {
     `${PROXY_BASE}/${ROUTE}?g=${q}&max=${max}&timespan=${span}&lang=en`
   ];
 
-  // 2) Fallback: NO lang param (this was working earlier in your builds)
+  // 2) Fallback: NO lang param
   const urlsNoLang = [
     `${PROXY_BASE}/${ROUTE}?query=${q}&max=${max}&timespan=${span}`,
     `${PROXY_BASE}/${ROUTE}?q=${q}&max=${max}&timespan=${span}`,
@@ -212,14 +223,16 @@ function setUpdated(msg) { safeText(el.updated, `Updated: ${msg}`); }
 function renderBars(catTotals) {
   if (!el.breakdown) return;
 
+  const headlineCount = window.__HEADLINE_COUNT__ || 1;
+
   const rows = CATS.map(c => {
     const val = catTotals[c.key] || 0;
-    const pct = pctFromScore(val);
-    const cls = classFromPct(pct);
+    const p = pctForCategory(val, headlineCount);
+    const cls = classFromPct(p);
     return `
       <div class="barRow">
         <div class="barLabel">${c.label}</div>
-        <div class="barTrack"><div class="barFill ${cls}" style="width:${pct}%"></div></div>
+        <div class="barTrack"><div class="barFill ${cls}" style="width:${p}%"></div></div>
         <div class="barNum">${val}</div>
       </div>
     `;
@@ -295,6 +308,9 @@ async function run(query = DEFAULT_QUERY) {
 
     safeText(el.sample, `Sample: ${after} headlines`);
 
+    // Save headline count for percent normalization (bars + overall)
+    window.__HEADLINE_COUNT__ = Math.max(1, after);
+
     // Score doom
     const totals = {};
     for (const c of CATS) totals[c.key] = 0;
@@ -313,7 +329,7 @@ async function run(query = DEFAULT_QUERY) {
     }
 
     const doomScore = Object.values(totals).reduce((s, n) => s + n, 0);
-    const doomPct = pctFromScore(doomScore);
+    const doomPct = pctForOverall(doomScore, window.__HEADLINE_COUNT__);
     const doomCls = classFromPct(doomPct);
     const doomLabel = labelFromPct(doomPct);
 
@@ -342,7 +358,6 @@ async function run(query = DEFAULT_QUERY) {
     safeText(el.okPill, "OK");
 
   } catch (err) {
-    // IMPORTANT: show error reason in the pill so we can diagnose from a screenshot
     const msg = (err && err.message) ? err.message : String(err);
     setStatus(`Omen failure: ${msg}`);
     setUpdated(nowStamp());
