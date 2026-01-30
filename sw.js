@@ -1,11 +1,11 @@
-// Doomroom News — sw.js (v3.1.5)
+// Doomroom News — sw.js (v3.1.6)
 //
 // Goal:
 // - Cache static assets (index/app/styles/icons) for fast loads + offline shell
 // - NEVER cache news/API responses (so you don't get "stuck" on old headlines)
 // - Network-first for navigation + app.js so updates show up quickly
 
-const CACHE_NAME = "doomroom-static-v3.1.5";
+const CACHE_NAME = "doomroom-static-v3.1.6";
 
 // Only static site assets go here (safe to cache)
 const STATIC_ASSETS = [
@@ -50,7 +50,6 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(req.url);
 
   // ✅ 1) NEVER cache cross-origin requests (including your proxy/news fetches)
-  //    This is the big one that prevents "same old 2 articles".
   if (url.origin !== self.location.origin) {
     // If it's your news proxy, force true network (no cache).
     if (url.hostname === PROXY_HOST) {
