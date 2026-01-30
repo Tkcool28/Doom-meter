@@ -160,7 +160,7 @@ function tagFromPct(p) {
 }
 
 // Average doom normalization (keep your tuned value)
-const REALISTIC_MAX_PER_HEADLINE = 24;
+const REALISTIC_MAX_PER_HEADLINE = 5;
 
 function computeOverallPct(totals, n) {
   const count = Math.max(1, n);
