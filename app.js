@@ -1,10 +1,10 @@
-/* Doomroom News — app.js (v3.2.6)
-   Change:
-   - Big number is still AVERAGE doom per headline,
-     but normalized to a realistic max so it doesn't sit at 0–5 all day.
+/* Doomroom News — app.js (v3.2.7)
+   ONLY CHANGE:
+   - Replace the doom label + tag copy with your 0–100 ranges.
+   Everything else remains the same.
 */
 
-const VERSION = "v3.2.6";
+const VERSION = "v3.2.7";
 
 // Your worker
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
@@ -26,7 +26,7 @@ const CATS = [
   { key: "misc", label: "Misc. Chaos", keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] }
 ];
 
-// ✅ Simple + reliable for GDELT
+// GDELT query (works well with the worker)
 const DEFAULT_QUERY =
   "(war OR attack OR missile OR drone OR nuclear OR election OR protest OR coup OR inflation OR layoff OR ransomware OR breach OR wildfire OR flood OR hurricane)";
 
@@ -115,17 +115,27 @@ function classFromPct(p) {
   return "green";
 }
 
+// ✅ ONLY CHANGE: label + tag mapping
 function labelFromPct(p) {
-  if (p > 90) return "On fire.";
-  if (p >= 80) return "Bad vibes.";
-  if (p >= 50) return "Spicy.";
-  if (p >= 25) return "Uneasy.";
-  return "Chill (suspiciously).";
+  if (p <= 20) return "We’re so back.";
+  if (p <= 40) return "Mildly cursed timeline.";
+  if (p <= 60) return "This is why aliens don’t visit.";
+  if (p <= 80) return "Please put your trays into their upright position, and fasten your seat belts.";
+  if (p <= 95) return "Apocalypse-adjacent.";
+  return "Final Boss Week unlocked.";
 }
 
-// ✅ NEW: realistic average normalization
-// If 2 categories are popping hard, we want the big number to show it.
-const REALISTIC_MAX_PER_HEADLINE = 5; // try 24; higher => lower doom %, lower => higher doom %
+function tagFromPct(p) {
+  if (p <= 20) return "Things are calm. Suspiciously calm. Enjoy it while it lasts.";
+  if (p <= 40) return "Nothing is technically broken, but the vibes are off.";
+  if (p <= 60) return "Patterns are emerging. None of them are flattering to humanity.";
+  if (p <= 80) return "Multiple systems are wobbling. Turbulence ahead.";
+  if (p <= 95) return "Not the end of the world, but it’s definitely in the waiting room.";
+  return "Everything is happening everywhere all at once. Do not check the news before bed.";
+}
+
+// Average doom normalization (your tuned value)
+const REALISTIC_MAX_PER_HEADLINE = 24;
 
 function computeOverallPct(totals, n) {
   const count = Math.max(1, n);
@@ -253,13 +263,12 @@ async function run(query = DEFAULT_QUERY) {
       }
     }
 
-    // ✅ Average doom, but "feels" right
     const doomPct = computeOverallPct(totals, list.length);
     const doomCls = classFromPct(doomPct);
 
     safeText(el.doomNum, String(doomPct));
     safeText(el.doomLabel, labelFromPct(doomPct));
-    safeText(el.doomTag, "Take a breath. The universe is weird.");
+    safeText(el.doomTag, tagFromPct(doomPct));
 
     if (el.doomFill) {
       el.doomFill.className = `fill ${doomCls}`;
@@ -309,3 +318,4 @@ window.addEventListener("DOMContentLoaded", () => {
   wireRefresh();
   run(DEFAULT_QUERY);
 });
+```0
