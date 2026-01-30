@@ -1,21 +1,23 @@
-/* Doomroom News — app.js (v3.1.6)
+/* Doomroom News — app.js (v3.1.7)
    Fixes:
    - Worker route typo fixed: ROUTE "gdeit" -> "gdelt"
-   - Worker fetch: tries with &lang=en first, then falls back to no-lang URLs
-   - English filter: no longer "hint word" strict; only blocks obvious non-Latin scripts
-   - Better debug in the status pill (shows why it failed)
-   - Doom % math fixed: percent is now normalized by headline count + category limits
+   - English ONLY filter:
+       - If feed provides language field -> require "en"
+       - Otherwise: block non-latin, block accented chars, and block common non-English stopwords
+   - Bars fixed: render markup that matches your existing CSS (.breakItem/.breakBar/.fill)
+   - Stories fixed: render markup that matches your existing CSS (.stories/.story)
+   - Better debug in status pill
 */
 
-const VERSION = "v3.1.6";
+const VERSION = "v3.1.7";
 
-// Your worker (keep as-is)
+// Your worker
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
-const ROUTE = "gdelt"; // ✅ FIX: was "gdeit"
+const ROUTE = "gdelt"; // ✅ FIX (was "gdeit")
 
 // Content knobs
 const DEFAULT_QUERY = "world";
-const MAX_RECORDS = 25;
+const MAX_RECORDS = 60;   // bump slightly so we still have enough after filtering
 const TIMESPAN = "7d";
 
 // Doom categories
@@ -87,11 +89,9 @@ function hideAbout() {
 
 function wireAbout() {
   if (el.about) el.about.addEventListener("click", showAbout);
-
   if (el.closeAbout) el.closeAbout.addEventListener("click", hideAbout);
   if (el.closeAbout2) el.closeAbout2.addEventListener("click", hideAbout);
 
-  // Tap backdrop closes too
   if (el.aboutOverlay) {
     el.aboutOverlay.addEventListener("click", (e) => {
       if (e.target === el.aboutOverlay) hideAbout();
@@ -99,17 +99,61 @@ function wireAbout() {
   }
 }
 
-// ---------- Language filter (SAFE / NOT STRICT) ----------
-// Block obvious non-Latin scripts (Chinese, Cyrillic, Arabic, etc.).
-// This avoids "not in English" disasters without accidentally filtering EVERYTHING.
-const NON_LATIN = /[\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0900-\u097F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/;
+// ---------- English ONLY filter ----------
+// 1) If article has language field: require en
+// 2) Otherwise use heuristics:
+//    - block non-latin scripts
+//    - block accented chars (very common in non-English headlines)
+//    - block common non-English stopwords
 
-function keepEnglishish(title) {
+const NON_LATIN = /[\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0900-\u097F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/;
+const HAS_ACCENTS = /[^\x00-\x7F]/;
+
+const NON_EN_STOPWORDS = [
+  // Spanish
+  /\b(el|la|los|las|un|una|unos|unas|y|de|del|en|por|para|con|sin|sobre|que|se|su|sus)\b/i,
+  // Portuguese
+  /\b(o|a|os|as|um|uma|uns|umas|e|de|do|da|dos|das|em|por|para|com|sem|que|não|ser)\b/i,
+  // Indonesian/Malay common
+  /\b(yang|dan|di|ke|dari|untuk|pada|dengan|tidak|ini|itu)\b/i,
+  // French common
+  /\b(le|la|les|un|une|des|et|de|du|dans|pour|avec|sans|sur|que)\b/i,
+  // German common
+  /\b(der|die|das|und|mit|für|von|im|auf|nicht|ein|eine)\b/i
+];
+
+function looksEnglishByHeuristic(title) {
   if (!title) return false;
   const t = String(title).trim();
   if (!t) return false;
+
+  // Block obvious non-latin scripts
   if (NON_LATIN.test(t)) return false;
+
+  // Accents usually mean it's not English (good simple filter for your use-case)
+  if (HAS_ACCENTS.test(t)) return false;
+
+  // If lots of non-English stopwords appear, reject
+  let hits = 0;
+  for (const rx of NON_EN_STOPWORDS) {
+    if (rx.test(` ${t.toLowerCase()} `)) hits++;
+    if (hits >= 2) return false; // 2+ groups matched => very likely not English
+  }
+
+  // Require at least a couple words (avoid junk)
+  const words = t.split(/\s+/).filter(Boolean);
+  if (words.length < 2) return false;
+
   return true;
+}
+
+function keepEnglishOnly(article) {
+  const lang = String(article?.language || "").trim().toLowerCase();
+  if (lang) {
+    // If worker provides language, trust it
+    return lang === "en" || lang.startsWith("en-");
+  }
+  return looksEnglishByHeuristic(article?.title);
 }
 
 function dedupeArticles(list) {
@@ -126,7 +170,7 @@ function dedupeArticles(list) {
       url,
       source: String(a?.source || a?.publisher || a?.domain || a?.site || "").trim(),
       time: String(a?.time || a?.publishedAt || a?.published || "").trim(),
-      language: String(a?.language || "").trim()
+      language: String(a?.language || a?.lang || "").trim()
     });
   }
   return out;
@@ -142,14 +186,12 @@ function scoreHeadline(title) {
     for (const kw of c.keywords) {
       if (t.includes(kw)) scores[c.key] += 3;
     }
-    scores[c.key] = Math.min(scores[c.key], 12); // per-category per-headline cap
+    scores[c.key] = Math.min(scores[c.key], 12);
   }
   return scores;
 }
 
-// ✅ FIX: Percent math should depend on headline count and known caps.
-// Per headline: each category max is 12.
-// Overall max per headline is (CATS.length * 12).
+// Percent helpers
 function pct(score, max) {
   if (!max || max <= 0) return 0;
   return Math.max(0, Math.min(100, Math.round((score / max) * 100)));
@@ -176,7 +218,7 @@ function labelFromPct(p) {
   return "Chill (suspiciously).";
 }
 
-// ---------- Fetch with fallback ----------
+// ---------- Fetch ----------
 async function fetchJSON(url) {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -188,14 +230,12 @@ async function fetchViaWorker(query) {
   const max = encodeURIComponent(String(MAX_RECORDS));
   const span = encodeURIComponent(TIMESPAN);
 
-  // 1) Try with lang=en (IF worker supports it)
   const urlsLang = [
     `${PROXY_BASE}/${ROUTE}?query=${q}&max=${max}&timespan=${span}&lang=en`,
     `${PROXY_BASE}/${ROUTE}?q=${q}&max=${max}&timespan=${span}&lang=en`,
     `${PROXY_BASE}/${ROUTE}?g=${q}&max=${max}&timespan=${span}&lang=en`
   ];
 
-  // 2) Fallback: NO lang param
   const urlsNoLang = [
     `${PROXY_BASE}/${ROUTE}?query=${q}&max=${max}&timespan=${span}`,
     `${PROXY_BASE}/${ROUTE}?q=${q}&max=${max}&timespan=${span}`,
@@ -225,15 +265,21 @@ function renderBars(catTotals) {
 
   const headlineCount = window.__HEADLINE_COUNT__ || 1;
 
+  // ✅ Render markup that matches YOUR CSS: .breakItem/.breakTop/.breakBar .fill
   const rows = CATS.map(c => {
     const val = catTotals[c.key] || 0;
     const p = pctForCategory(val, headlineCount);
     const cls = classFromPct(p);
+
     return `
-      <div class="barRow">
-        <div class="barLabel">${c.label}</div>
-        <div class="barTrack"><div class="barFill ${cls}" style="width:${p}%"></div></div>
-        <div class="barNum">${val}</div>
+      <div class="breakItem">
+        <div class="breakTop">
+          <div>${c.label}</div>
+          <div>${val}</div>
+        </div>
+        <div class="breakBar">
+          <div class="fill ${cls}" style="width:${p}%"></div>
+        </div>
       </div>
     `;
   }).join("");
@@ -247,7 +293,7 @@ function renderDrivers(topDrivers) {
     safeHTML(el.drivers, `<div class="muted">No obvious drivers. Reality is being unusually polite.</div>`);
     return;
   }
-  safeHTML(el.drivers, topDrivers.map(s => `<div class="pill">${s}</div>`).join(""));
+  safeHTML(el.drivers, topDrivers.map(s => `<div class="pill">${escapeHtml(s)}</div>`).join(""));
 }
 
 function renderStories(items) {
@@ -257,19 +303,20 @@ function renderStories(items) {
     return;
   }
 
+  // ✅ Render markup that matches YOUR CSS: .stories and .story
   const cards = items.map(a => {
     const source = a.source ? a.source : "source unknown";
     const title = a.title || "(untitled)";
     const url = a.url || "#";
     return `
-      <a class="storyCard" href="${url}" target="_blank" rel="noopener noreferrer">
+      <a class="story" href="${url}" target="_blank" rel="noopener noreferrer">
         <div class="storyTitle">${escapeHtml(title)}</div>
-        <div class="storyMeta muted">${escapeHtml(source)} • English-ish • Global</div>
+        <div class="storyMeta">${escapeHtml(source)} • English • Global</div>
       </a>
     `;
   }).join("");
 
-  safeHTML(el.stories, cards);
+  safeHTML(el.stories, `<div class="stories">${cards}</div>`);
 }
 
 function escapeHtml(s) {
@@ -289,7 +336,6 @@ async function run(query = DEFAULT_QUERY) {
   try {
     const data = await fetchViaWorker(query);
 
-    // Worker might return { articles: [...] } OR raw [...] or other keys
     const rawList =
       Array.isArray(data) ? data :
       (data.articles || data.items || data.results || data.data || data.entries || []);
@@ -298,20 +344,16 @@ async function run(query = DEFAULT_QUERY) {
 
     const before = list.length;
 
-    // Filter label is what user wants, but filter is "safe English-ish"
-    safeText(el.filterPill, "Filter: English / Global");
+    safeText(el.filterPill, "Filter: English only / Global");
 
-    // Keep only obvious Latin-script headlines (stops Chinese/Cyrillic flood)
-    list = list.filter(a => keepEnglishish(a.title));
+    // ✅ English ONLY
+    list = list.filter(a => keepEnglishOnly(a));
 
     const after = list.length;
-
     safeText(el.sample, `Sample: ${after} headlines`);
 
-    // Save headline count for percent normalization (bars + overall)
     window.__HEADLINE_COUNT__ = Math.max(1, after);
 
-    // Score doom
     const totals = {};
     for (const c of CATS) totals[c.key] = 0;
 
@@ -336,6 +378,7 @@ async function run(query = DEFAULT_QUERY) {
     safeText(el.doomNum, String(doomPct));
     safeText(el.doomLabel, doomLabel);
     safeText(el.doomTag, "Take a breath. The universe is weird.");
+
     if (el.doomFill) {
       el.doomFill.className = `fill ${doomCls}`;
       el.doomFill.style.width = `${doomPct}%`;
@@ -356,7 +399,6 @@ async function run(query = DEFAULT_QUERY) {
     setStatus(`Omens readable. (${before}→${after})`);
     setUpdated(nowStamp());
     safeText(el.okPill, "OK");
-
   } catch (err) {
     const msg = (err && err.message) ? err.message : String(err);
     setStatus(`Omen failure: ${msg}`);
