@@ -13,7 +13,7 @@
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 
   <!-- ✅ HARD CACHE BUST -->
-  <link rel="stylesheet" href="./styles.css?v=3220" />
+  <link rel="stylesheet" href="./styles.css?v=3230" />
 </head>
 
 <body>
@@ -47,7 +47,7 @@
 
         <div class="row rowTight">
           <div id="okPill" class="pill muted">OK</div>
-          <div id="filterPill" class="pill muted">Filter: English / Global</div>
+          <div id="filterPill" class="pill muted">Filter: English ONLY / Global</div>
           <div id="samplePill" class="pill muted">Sample: —</div>
         </div>
       </div>
@@ -99,14 +99,16 @@
   <noscript>This app needs JavaScript to read the omens.</noscript>
 
   <!-- ✅ HARD CACHE BUST -->
-  <script src="./app.js?v=3220" defer></script>
+  <script src="./app.js?v=3230" defer></script>
 
   <script>
     (function () {
       if (!("serviceWorker" in navigator)) return;
       window.addEventListener("load", function () {
-        // ✅ HARD CACHE BUST SERVICE WORKER TOO
-        navigator.serviceWorker.register("./sw.js?v=3220", { scope: "./" }).catch(function(){});
+        // ✅ CRITICAL FIX:
+        // Force scope to /Doom-meter/ so it overrides any old root service worker.
+        navigator.serviceWorker.register("./sw.js?v=3230", { scope: "/Doom-meter/" })
+          .catch(function(){});
       });
     })();
   </script>
