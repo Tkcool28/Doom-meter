@@ -1,10 +1,10 @@
-/* Doomroom News — app.js (v3.2.3)
-   - Uses a SIMPLE doom query that reliably returns results from GDELT
-   - Treats Worker as the English filter (no fragile "strict English" in browser)
-   - Bars always render
+/* Doomroom News — app.js (v3.2.6)
+   Change:
+   - Big number is still AVERAGE doom per headline,
+     but normalized to a realistic max so it doesn't sit at 0–5 all day.
 */
 
-const VERSION = "v3.2.3";
+const VERSION = "v3.2.6";
 
 // Your worker
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
@@ -26,7 +26,7 @@ const CATS = [
   { key: "misc", label: "Misc. Chaos", keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] }
 ];
 
-// ✅ Simple + reliable for GDELT (avoid fancy quotes / too-long strings)
+// ✅ Simple + reliable for GDELT
 const DEFAULT_QUERY =
   "(war OR attack OR missile OR drone OR nuclear OR election OR protest OR coup OR inflation OR layoff OR ransomware OR breach OR wildfire OR flood OR hurricane)";
 
@@ -123,13 +123,19 @@ function labelFromPct(p) {
   return "Chill (suspiciously).";
 }
 
-// Normalize overall by article count so you don’t get stuck at 0
+// ✅ NEW: realistic average normalization
+// If 2 categories are popping hard, we want the big number to show it.
+const REALISTIC_MAX_PER_HEADLINE = 24; // try 24; higher => lower doom %, lower => higher doom %
+
 function computeOverallPct(totals, n) {
   const count = Math.max(1, n);
   const sum = Object.values(totals).reduce((a, b) => a + b, 0);
-  const perArticle = sum / count;
-  const maxPerArticle = CATS.length * 12;
-  return Math.max(0, Math.min(100, Math.round((perArticle / maxPerArticle) * 100)));
+  const perHeadline = sum / count;
+
+  return Math.max(
+    0,
+    Math.min(100, Math.round((perHeadline / REALISTIC_MAX_PER_HEADLINE) * 100))
+  );
 }
 
 // ---------- Fetch ----------
@@ -157,7 +163,7 @@ function renderBars(catTotals) {
   const rows = CATS.map(c => {
     const val = catTotals[c.key] || 0;
 
-    // Soft cap for display: makes bars visible even for small totals
+    // Display scaling for each category bar
     const pct = Math.max(0, Math.min(100, Math.round((val / 30) * 100)));
     const cls = classFromPct(pct);
 
@@ -247,6 +253,7 @@ async function run(query = DEFAULT_QUERY) {
       }
     }
 
+    // ✅ Average doom, but "feels" right
     const doomPct = computeOverallPct(totals, list.length);
     const doomCls = classFromPct(doomPct);
 
