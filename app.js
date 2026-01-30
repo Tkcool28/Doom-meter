@@ -125,7 +125,7 @@ function labelFromPct(p) {
 
 // ✅ NEW: realistic average normalization
 // If 2 categories are popping hard, we want the big number to show it.
-const REALISTIC_MAX_PER_HEADLINE = 10; // try 24; higher => lower doom %, lower => higher doom %
+const REALISTIC_MAX_PER_HEADLINE = 5; // try 24; higher => lower doom %, lower => higher doom %
 
 function computeOverallPct(totals, n) {
   const count = Math.max(1, n);
