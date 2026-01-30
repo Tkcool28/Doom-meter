@@ -5,7 +5,7 @@
 // - NEVER cache news/API responses
 // - Network-first for navigation + app.js so updates show up quickly
 
-const CACHE_NAME = "doomroom-static-v3.2.1";
+const CACHE_NAME = "doomroom-static-v3.2.2";
 
 const STATIC_ASSETS = [
   "./",
