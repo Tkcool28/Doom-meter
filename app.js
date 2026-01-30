@@ -1,10 +1,11 @@
-/* Doomroom News — app.js (v3.2.7)
-   ONLY CHANGE:
-   - Replace the doom label + tag copy with your 0–100 ranges.
-   Everything else remains the same.
+/* Doomroom News — app.js (v3.2.8)
+   Fix:
+   - If JS fails (syntax/runtime), the status pill shows the error (no DevTools needed).
+   - Keeps your custom label/tag ranges.
+   - Does NOT change your worker behavior or the scoring logic.
 */
 
-const VERSION = "v3.2.7";
+const VERSION = "v3.2.8";
 
 // Your worker
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
@@ -80,17 +81,41 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 
+// ---------- Status helpers ----------
+function setStatus(msg) { safeText(el.status, msg); }
+function setUpdated(msg) { safeText(el.updated, `Updated: ${msg}`); }
+
+function showFatal(where, err) {
+  const msg = (err && err.message) ? err.message : String(err || "Unknown error");
+  setStatus(`JS error (${where}): ${msg}`);
+  setUpdated(nowStamp());
+  // Keep UI from feeling dead
+  safeText(el.okPill, "OK");
+  safeText(el.sample, "Sample: 0 headlines");
+  console.error(err);
+}
+
+// Catch unexpected errors and show them in the pill (super helpful on phones)
+window.addEventListener("error", (e) => {
+  try { showFatal("window.error", e.error || e.message); } catch {}
+});
+window.addEventListener("unhandledrejection", (e) => {
+  try { showFatal("promise", e.reason); } catch {}
+});
+
 // ---------- About overlay ----------
-function showAbout() { el.aboutOverlay?.classList.remove("hidden"); }
-function hideAbout() { el.aboutOverlay?.classList.add("hidden"); }
+function showAbout() { if (el.aboutOverlay) el.aboutOverlay.classList.remove("hidden"); }
+function hideAbout() { if (el.aboutOverlay) el.aboutOverlay.classList.add("hidden"); }
 
 function wireAbout() {
-  el.about?.addEventListener("click", showAbout);
-  el.closeAbout?.addEventListener("click", hideAbout);
-  el.closeAbout2?.addEventListener("click", hideAbout);
-  el.aboutOverlay?.addEventListener("click", (e) => {
-    if (e.target === el.aboutOverlay) hideAbout();
-  });
+  if (el.about) el.about.addEventListener("click", showAbout);
+  if (el.closeAbout) el.closeAbout.addEventListener("click", hideAbout);
+  if (el.closeAbout2) el.closeAbout2.addEventListener("click", hideAbout);
+  if (el.aboutOverlay) {
+    el.aboutOverlay.addEventListener("click", (e) => {
+      if (e.target === el.aboutOverlay) hideAbout();
+    });
+  }
 }
 
 // ---------- Doom scoring ----------
@@ -115,7 +140,7 @@ function classFromPct(p) {
   return "green";
 }
 
-// ✅ ONLY CHANGE: label + tag mapping
+// ✅ Your ranges
 function labelFromPct(p) {
   if (p <= 20) return "We’re so back.";
   if (p <= 40) return "Mildly cursed timeline.";
@@ -134,7 +159,7 @@ function tagFromPct(p) {
   return "Everything is happening everywhere all at once. Do not check the news before bed.";
 }
 
-// Average doom normalization (your tuned value)
+// Average doom normalization (keep your tuned value)
 const REALISTIC_MAX_PER_HEADLINE = 24;
 
 function computeOverallPct(totals, n) {
@@ -142,10 +167,7 @@ function computeOverallPct(totals, n) {
   const sum = Object.values(totals).reduce((a, b) => a + b, 0);
   const perHeadline = sum / count;
 
-  return Math.max(
-    0,
-    Math.min(100, Math.round((perHeadline / REALISTIC_MAX_PER_HEADLINE) * 100))
-  );
+  return Math.max(0, Math.min(100, Math.round((perHeadline / REALISTIC_MAX_PER_HEADLINE) * 100)));
 }
 
 // ---------- Fetch ----------
@@ -164,16 +186,11 @@ async function fetchViaWorker(query) {
 }
 
 // ---------- Render ----------
-function setStatus(msg) { safeText(el.status, msg); }
-function setUpdated(msg) { safeText(el.updated, `Updated: ${msg}`); }
-
 function renderBars(catTotals) {
   if (!el.breakdown) return;
 
   const rows = CATS.map(c => {
     const val = catTotals[c.key] || 0;
-
-    // Display scaling for each category bar
     const pct = Math.max(0, Math.min(100, Math.round((val / 30) * 100)));
     const cls = classFromPct(pct);
 
@@ -233,89 +250,94 @@ async function run(query = DEFAULT_QUERY) {
   safeText(el.sample, "Sample: —");
   setUpdated(nowStamp());
 
-  try {
-    const data = await fetchViaWorker(query);
-    const raw = Array.isArray(data) ? data : (data.articles || []);
+  const data = await fetchViaWorker(query);
+  const raw = Array.isArray(data) ? data : (data.articles || []);
 
-    const list = raw
-      .map(a => ({
-        title: a?.title || "",
-        url: a?.url || a?.url_mobile || "",
-        domain: a?.domain || a?.source || "",
-      }))
-      .filter(a => a.title && a.url);
+  const list = raw
+    .map(a => ({
+      title: a?.title || "",
+      url: a?.url || a?.url_mobile || "",
+      domain: a?.domain || a?.source || "",
+    }))
+    .filter(a => a.title && a.url);
 
-    safeText(el.sample, `Sample: ${list.length} headlines`);
+  safeText(el.sample, `Sample: ${list.length} headlines`);
 
-    const totals = {};
-    for (const c of CATS) totals[c.key] = 0;
+  const totals = {};
+  for (const c of CATS) totals[c.key] = 0;
 
-    const keywordHits = [];
-    for (const a of list) {
-      const scores = scoreHeadline(a.title);
-      for (const c of CATS) totals[c.key] += scores[c.key];
+  const keywordHits = [];
+  for (const a of list) {
+    const scores = scoreHeadline(a.title);
+    for (const c of CATS) totals[c.key] += scores[c.key];
 
-      const t = a.title.toLowerCase();
-      for (const c of CATS) {
-        for (const kw of c.keywords) {
-          if (t.includes(kw)) keywordHits.push(kw);
-        }
+    const t = a.title.toLowerCase();
+    for (const c of CATS) {
+      for (const kw of c.keywords) {
+        if (t.includes(kw)) keywordHits.push(kw);
       }
     }
-
-    const doomPct = computeOverallPct(totals, list.length);
-    const doomCls = classFromPct(doomPct);
-
-    safeText(el.doomNum, String(doomPct));
-    safeText(el.doomLabel, labelFromPct(doomPct));
-    safeText(el.doomTag, tagFromPct(doomPct));
-
-    if (el.doomFill) {
-      el.doomFill.className = `fill ${doomCls}`;
-      el.doomFill.style.width = `${doomPct}%`;
-    }
-
-    renderBars(totals);
-
-    const driverCounts = {};
-    for (const k of keywordHits) driverCounts[k] = (driverCounts[k] || 0) + 1;
-    const topDrivers = Object.entries(driverCounts)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 8)
-      .map(([k]) => k);
-
-    renderDrivers(topDrivers);
-    renderStories(list.slice(0, 12));
-
-    const info = data?.doomProxy;
-    if (info) {
-      setStatus(`Omens readable. (English: ${info.englishFound ?? "?"} → ${info.returned ?? list.length})`);
-    } else {
-      setStatus(`Omens readable. (${list.length})`);
-    }
-
-    setUpdated(nowStamp());
-
-  } catch (err) {
-    setStatus(`Omen failure: ${err?.message || String(err)}`);
-    safeText(el.sample, "Sample: 0 headlines");
-    renderStories([]);
-    renderDrivers([]);
-    renderBars(Object.fromEntries(CATS.map(c => [c.key, 0])));
-    console.error(err);
   }
+
+  const doomPct = computeOverallPct(totals, list.length);
+  const doomCls = classFromPct(doomPct);
+
+  safeText(el.doomNum, String(doomPct));
+  safeText(el.doomLabel, labelFromPct(doomPct));
+  safeText(el.doomTag, tagFromPct(doomPct));
+
+  if (el.doomFill) {
+    el.doomFill.className = `fill ${doomCls}`;
+    el.doomFill.style.width = `${doomPct}%`;
+  }
+
+  renderBars(totals);
+
+  const driverCounts = {};
+  for (const k of keywordHits) driverCounts[k] = (driverCounts[k] || 0) + 1;
+  const topDrivers = Object.entries(driverCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([k]) => k);
+
+  renderDrivers(topDrivers);
+  renderStories(list.slice(0, 12));
+
+  const info = data?.doomProxy;
+  if (info) {
+    setStatus(`Omens readable. (English: ${info.englishFound ?? "?"} → ${info.returned ?? list.length})`);
+  } else {
+    setStatus(`Omens readable. (${list.length})`);
+  }
+
+  setUpdated(nowStamp());
 }
 
 function wireRefresh() {
-  el.refresh?.addEventListener("click", () => run(DEFAULT_QUERY));
+  if (el.refresh) el.refresh.addEventListener("click", () => run(DEFAULT_QUERY));
 }
 
 // ---------- Boot ----------
-window.addEventListener("DOMContentLoaded", () => {
-  safeText(el.ver, VERSION);
-  safeText(el.aboutVersion, VERSION);
-  wireAbout();
-  wireRefresh();
-  run(DEFAULT_QUERY);
-});
-```0
+function boot() {
+  try {
+    safeText(el.ver, VERSION);
+    safeText(el.aboutVersion, VERSION);
+
+    wireAbout();
+    wireRefresh();
+
+    // If you see this, JS is running:
+    setStatus("Booting…");
+
+    // Run with safety wrapper
+    run(DEFAULT_QUERY).catch((err) => showFatal("run()", err));
+  } catch (err) {
+    showFatal("boot()", err);
+  }
+}
+
+if (document.readyState === "loading") {
+  window.addEventListener("DOMContentLoaded", boot);
+} else {
+  boot();
+}
