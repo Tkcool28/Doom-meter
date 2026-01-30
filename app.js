@@ -1,13 +1,21 @@
-/* Doomroom News — app.js (v3.1.8)
-   Fixes:
-   - English-only without blank screens:
-       * use language=en when provided
-       * otherwise score English-likelihood
-       * if strict yields 0, fallback to "best English-looking" results
-   - Bars/stories markup matches your CSS (.breakItem/.breakBar/.fill and .stories/.story)
+/* Doomroom News — app.js (v3.1.9)
+   Goal:
+   - English only when possible
+   - NEVER end up with 25→0 blank screen because heuristics guessed wrong
+
+   Strategy:
+   1) If article.language exists:
+        - keep only en
+        - drop non-en
+   2) If language is missing (common):
+        - use VERY LIGHT heuristic:
+            - reject obvious non-latin scripts only
+            - otherwise allow (because “english detection” is unreliable)
+   3) If filtering results in 0:
+        - show unfiltered list (but label it clearly)
 */
 
-const VERSION = "v3.1.8";
+const VERSION = "v3.1.9";
 
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
 const ROUTE = "gdelt";
@@ -55,11 +63,7 @@ const el = {
 
 function safeText(node, txt) { if (node) node.textContent = String(txt ?? ""); }
 function safeHTML(node, html) { if (node) node.innerHTML = html; }
-
-function nowStamp() {
-  try { return new Date().toLocaleString(); }
-  catch { return String(new Date()); }
-}
+function nowStamp() { try { return new Date().toLocaleString(); } catch { return String(new Date()); } }
 
 // ---------- About overlay ----------
 function showAbout(){ el.aboutOverlay?.classList.remove("hidden"); }
@@ -77,7 +81,7 @@ function dedupeArticles(list) {
   const out = [];
   for (const a of list || []) {
     const url = (a?.url || a?.link || "").trim();
-    const title = String(a?.title || "").trim();
+    const title = String(a?.title || a?.headline || a?.name || "").trim();
     const key = url ? `u:${url}` : `t:${title.toLowerCase()}`;
     if (!key || seen.has(key)) continue;
     seen.add(key);
@@ -92,82 +96,27 @@ function dedupeArticles(list) {
   return out;
 }
 
-// ---------- English scoring / filtering (robust) ----------
+// ---------- English filtering (safe, never blank) ----------
+// Only hard-reject obvious non-latin scripts. Latin-language detection is unreliable without proper metadata.
 const NON_LATIN = /[\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0900-\u097F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/;
 
-const COMMON_EN = new Set([
-  "the","a","an","and","or","but","to","of","in","on","for","with","from","as","at","by","after","before",
-  "new","says","say","report","reports","amid","over","about","into","will","may","could","should"
-]);
+function filterEnglishPreferred(list) {
+  const withLang = list.filter(a => String(a.language || "").trim() !== "");
+  const withoutLang = list.filter(a => String(a.language || "").trim() === "");
 
-// A few high-signal non-English stopwords (single hit does NOT kill it, just lowers score)
-const NON_EN = new Set([
-  "el","la","los","las","un","una","unos","unas","y","de","del","en","por","para","con","sin","que",
-  "o","os","as","um","uma","e","do","da","dos","das","em","não",
-  "yang","dan","di","ke","dari","untuk","pada","dengan","tidak","ini","itu",
-  "le","les","des","et","du","dans","pour","avec","sans",
-  "der","die","das","und","mit","für","von","im","auf","nicht","ein","eine"
-]);
+  // If language metadata exists, trust it strongly.
+  const enFromLang = withLang.filter(a => {
+    const l = String(a.language).trim().toLowerCase();
+    return l === "en" || l.startsWith("en-");
+  });
 
-function englishScore(title, langField) {
-  if (!title) return -999;
-  const t = String(title).trim();
-  if (!t) return -999;
-  if (NON_LATIN.test(t)) return -999; // hard reject for non-latin scripts
+  // For items with no language: only reject obvious non-latin scripts.
+  const latinOnly = withoutLang.filter(a => !NON_LATIN.test(String(a.title || "")));
 
-  const lang = String(langField || "").trim().toLowerCase();
-  if (lang === "en" || lang.startsWith("en-")) return 999; // guaranteed keep if worker says en
-  if (lang && lang !== "en" && !lang.startsWith("en-")) return -50; // worker claims non-en
-
-  // Heuristic scoring
-  // Allow accents sometimes (names/places), but penalize if there are many.
-  const nonAsciiCount = (t.match(/[^\x00-\x7F]/g) || []).length;
-
-  const words = t
-    .toLowerCase()
-    .replace(/[^a-z0-9'\s-]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean);
-
-  if (words.length < 2) return -10;
-
-  let score = 0;
-
-  // English function words boost
-  for (const w of words) {
-    if (COMMON_EN.has(w)) score += 2;
-    if (NON_EN.has(w)) score -= 3;
-  }
-
-  // Penalize lots of accents / non-ascii
-  score -= nonAsciiCount * 2;
-
-  // Boost if headline contains typical English punctuation patterns
-  if (t.includes("'")) score += 1;
-  if (t.includes(":")) score += 1;
-
-  return score;
-}
-
-function filterEnglishOnly(list) {
-  const scored = list.map(a => ({ a, s: englishScore(a.title, a.language) }));
-
-  // Strict: keep only those strongly likely English OR explicitly en
-  const strict = scored
-    .filter(x => x.s >= 2 || x.s === 999)
-    .sort((x, y) => y.s - x.s)
-    .map(x => x.a);
-
-  // If strict yields nothing, fallback to "best English-looking" (still avoids obvious non-English)
-  if (strict.length > 0) return { out: strict, mode: "strict" };
-
-  const fallback = scored
-    .filter(x => x.s > -20)              // drops obvious non-English
-    .sort((x, y) => y.s - x.s)
-    .slice(0, 12)                         // keep the best-looking English-ish set
-    .map(x => x.a);
-
-  return { out: fallback, mode: "fallback" };
+  return {
+    preferred: [...enFromLang, ...latinOnly],
+    hadLangMeta: withLang.length > 0
+  };
 }
 
 // ---------- Doom scoring ----------
@@ -274,7 +223,7 @@ function renderDrivers(topDrivers) {
 function renderStories(items) {
   if (!el.stories) return;
   if (!items.length) {
-    safeHTML(el.stories, `<div class="muted">No stories found. (English filter removed everything.)</div>`);
+    safeHTML(el.stories, `<div class="muted">No stories found.</div>`);
     return;
   }
 
@@ -285,7 +234,7 @@ function renderStories(items) {
     return `
       <a class="story" href="${url}" target="_blank" rel="noopener noreferrer">
         <div class="storyTitle">${escapeHtml(title)}</div>
-        <div class="storyMeta">${escapeHtml(source)} • English • Global</div>
+        <div class="storyMeta">${escapeHtml(source)} • ${escapeHtml(a.language || "—")} • Global</div>
       </a>
     `;
   }).join("");
@@ -314,13 +263,25 @@ async function run(query = DEFAULT_QUERY) {
       Array.isArray(data) ? data :
       (data.articles || data.items || data.results || data.data || data.entries || []);
 
-    let list = dedupeArticles(rawList);
-    const before = list.length;
+    const raw = dedupeArticles(rawList);
+    const before = raw.length;
 
-    safeText(el.filterPill, "Filter: English only / Global");
+    const { preferred, hadLangMeta } = filterEnglishPreferred(raw);
 
-    const filtered = filterEnglishOnly(list);
-    list = filtered.out;
+    // If preferred is empty, DO NOT BLANK THE APP. Show raw list and warn.
+    let list = preferred;
+    let filterNote = "English preferred / Global";
+
+    if (list.length === 0 && raw.length > 0) {
+      list = raw;
+      filterNote = "Global (English filter unavailable)";
+    } else if (hadLangMeta) {
+      filterNote = "English only (by metadata) / Global";
+    } else {
+      filterNote = "English preferred (best-effort) / Global";
+    }
+
+    safeText(el.filterPill, `Filter: ${filterNote}`);
 
     const after = list.length;
     safeText(el.sample, `Sample: ${after} headlines`);
@@ -365,9 +326,7 @@ async function run(query = DEFAULT_QUERY) {
     renderDrivers(topDrivers);
     renderStories(list.slice(0, 12));
 
-    // status includes whether fallback happened
-    const modeNote = filtered.mode === "fallback" ? " (fallback)" : "";
-    setStatus(`Omens readable. (${before}→${after})${modeNote}`);
+    setStatus(`Omens readable. (${before}→${after})`);
     setUpdated(nowStamp());
     safeText(el.okPill, "OK");
   } catch (err) {
@@ -381,9 +340,7 @@ async function run(query = DEFAULT_QUERY) {
   }
 }
 
-function wireRefresh() {
-  el.refresh?.addEventListener("click", () => run(DEFAULT_QUERY));
-}
+function wireRefresh() { el.refresh?.addEventListener("click", () => run(DEFAULT_QUERY)); }
 
 window.addEventListener("DOMContentLoaded", () => {
   safeText(el.ver, VERSION);
