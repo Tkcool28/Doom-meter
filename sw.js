@@ -1,17 +1,16 @@
-// Doomroom News — sw.js (v3.1.7)
-//
-// Goal:
-// - Cache static assets for fast loads + offline shell
-// - NEVER cache news/API responses
-// - Network-first for navigation + app.js so updates show up quickly
+// Doomroom News — sw.js (v3.2.2)
+// - Cache static shell
+// - Network-first for app.js/styles.css (including ?v=...)
+// - Never cache worker/news responses
 
-const CACHE_NAME = "doomroom-static-v3.2.3";
+const CACHE_NAME = "doomroom-static-v3.2.2";
 
+// NOTE: include the versioned URLs so offline shell still works
 const STATIC_ASSETS = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./app.js",
+  "./styles.css?v=3220",
+  "./app.js?v=3220",
   "./manifest.webmanifest",
   "./icons/apple-touch-icon.png",
   "./icons/doomroom-192.png",
@@ -20,23 +19,20 @@ const STATIC_ASSETS = [
   "./icons/favicon-16.png",
 ];
 
+// Proxy host so we never cache it
 const PROXY_HOST = "doom-proxy.toddkirschman.workers.dev";
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS))
-  );
+  event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)));
   self.skipWaiting();
 });
 
 self.addEventListener("activate", (event) => {
-  event.waitUntil(
-    (async () => {
-      const keys = await caches.keys();
-      await Promise.all(keys.map((k) => (k === CACHE_NAME ? null : caches.delete(k))));
-      await self.clients.claim();
-    })()
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => (k === CACHE_NAME ? null : caches.delete(k))));
+    await self.clients.claim();
+  })());
 });
 
 self.addEventListener("fetch", (event) => {
@@ -45,57 +41,52 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(req.url);
 
-  // Never cache cross-origin
+  // Never cache cross-origin requests (especially the proxy)
   if (url.origin !== self.location.origin) {
     if (url.hostname === PROXY_HOST) {
       event.respondWith(fetch(req, { cache: "no-store" }));
-      return;
     }
     return;
   }
 
+  // Navigation: network-first, fallback to cached index.html
   if (req.mode === "navigate") {
-    event.respondWith(
-      (async () => {
-        try {
-          const fresh = await fetch(req, { cache: "no-store" });
-          const cache = await caches.open(CACHE_NAME);
-          cache.put("./index.html", fresh.clone());
-          return fresh;
-        } catch (e) {
-          const cached = await caches.match("./index.html");
-          return cached || new Response("Offline.", { status: 503 });
-        }
-      })()
-    );
+    event.respondWith((async () => {
+      try {
+        const fresh = await fetch(req, { cache: "no-store" });
+        const cache = await caches.open(CACHE_NAME);
+        cache.put("./index.html", fresh.clone());
+        return fresh;
+      } catch {
+        return (await caches.match("./index.html")) || new Response("Offline.", { status: 503 });
+      }
+    })());
     return;
   }
 
-  if (url.pathname.endsWith("/app.js") || url.pathname.endsWith("/styles.css")) {
-    event.respondWith(
-      (async () => {
-        try {
-          const fresh = await fetch(req, { cache: "no-store" });
-          const cache = await caches.open(CACHE_NAME);
-          cache.put(req, fresh.clone());
-          return fresh;
-        } catch (e) {
-          return (await caches.match(req)) || fetch(req);
-        }
-      })()
-    );
+  // app.js + styles.css: network-first so updates land fast (works with ?v=...)
+  if (url.pathname.endsWith("/app.js") || url.pathname.endsWith("/styles.css") || url.pathname.endsWith("/sw.js")) {
+    event.respondWith((async () => {
+      try {
+        const fresh = await fetch(req, { cache: "no-store" });
+        const cache = await caches.open(CACHE_NAME);
+        cache.put(req, fresh.clone());
+        return fresh;
+      } catch {
+        return (await caches.match(req)) || fetch(req);
+      }
+    })());
     return;
   }
 
-  event.respondWith(
-    (async () => {
-      const cached = await caches.match(req);
-      if (cached) return cached;
+  // Everything else on-origin: cache-first
+  event.respondWith((async () => {
+    const cached = await caches.match(req);
+    if (cached) return cached;
 
-      const fresh = await fetch(req);
-      const cache = await caches.open(CACHE_NAME);
-      cache.put(req, fresh.clone());
-      return fresh;
-    })()
-  );
+    const fresh = await fetch(req);
+    const cache = await caches.open(CACHE_NAME);
+    cache.put(req, fresh.clone());
+    return fresh;
+  })());
 });
