@@ -1,13 +1,13 @@
-/* Doomroom News — app.js (v3.3.0)
+/* Doomroom News — app.js (v3.3.1)
    Fixes:
-   - Never stuck on Loading (timeout + always updates UI)
-   - English-only filter that DOESN’T collapse to 2 articles
+   - Prevents “stuck loading” via fetch timeout + always-updating UI
+   - English-only filter that doesn’t collapse to 2 articles
    - Blocks non-Latin scripts (Chinese/Cyrillic/Arabic/etc)
    - Blocks common non-English Latin headlines via “tripwire” words
    - Doom score is an average that "leans higher" (power-mean)
 */
 
-const VERSION = "v3.3.0";
+const VERSION = "v3.3.1";
 
 // Your Cloudflare Worker
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
@@ -16,7 +16,6 @@ const ROUTE = "gdelt";
 // Content knobs
 const DEFAULT_QUERY = "world";
 const MAX_RECORDS = 160;     // fetch more so English filter has room
-const TIMESAPAN = "7d";      // (kept name used earlier)  <-- not used; see TIMES
 const TIMESPAN = "7d";
 
 // Doom categories
@@ -32,7 +31,7 @@ const CATS = [
   { key: "misc", label: "Misc. Chaos", keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] }
 ];
 
-// Query (works well with the worker)
+// Query fallback (keeps it relevant if "world" fails)
 const DEFAULT_QUERY_FALLBACK =
   "war OR attack OR missile OR drone OR nuclear OR election OR protest OR coup OR inflation OR layoff OR ransomware OR breach OR wildfire OR flood OR hurricane";
 
@@ -104,11 +103,10 @@ function wireAbout() {
   if (el.aboutVersion) safeText(el.aboutVersion, VERSION);
 }
 
-// ---------- Crash reporting (prevents silent “stuck loading”) ----------
+// ---------- Crash reporting ----------
 function showFatal(where, err) {
   const msg = `${where}: ${String(err && err.message ? err.message : err)}`.slice(0, 220);
   safeText(el.status, `Error — ${msg}`);
-  if (el.status) el.status.style.opacity = "1";
   safeText(el.updated, `Updated: ${nowStamp()}`);
   safeText(el.sample, "Sample: —");
   safeText(el.ver, VERSION);
@@ -116,42 +114,33 @@ function showFatal(where, err) {
 window.addEventListener("error", (e) => showFatal("JS error", e.error || e.message));
 window.addEventListener("unhandledrejection", (e) => showFatal("Promise", e.reason));
 
-// ---------- English-only filter (STRICT but not collapsing) ----------
+// ---------- English-only filter ----------
 // Blocks non-Latin scripts
 const NON_LATIN = /[\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0590-\u05FF\u3040-\u30FF\uAC00-\uD7AF]/;
 
-// Tripwire words — if these appear, it’s almost never actually English
-const NON_EN_TRIPWIRE = /\b(
-  de|la|el|los|las|una|un|para|por|con|sin|del|al|que|y|en|
-  da|do|dos|das|uma|um|para|com|sem|não|na|no|nos|nas|
-  yang|dan|atau|dengan|untuk|pada|ini|itu|dari|ke|di|sebagai|
-  telah|akan|juga|tidak|bisa|terkait|menjadi
-)\b/ix;
+// Tripwire words (Spanish/Portuguese/Indonesian patterns)
+// IMPORTANT: Valid JS regex flags only (no /x flag)
+const NON_EN_TRIPWIRE = /\b(de|la|el|los|las|una|un|para|por|con|sin|del|al|que|y|en|da|do|dos|das|uma|um|com|sem|nao|não|na|no|nos|nas|yang|dan|atau|dengan|untuk|pada|ini|itu|dari|ke|di|sebagai|telah|akan|juga|tidak|bisa|terkait|menjadi)\b/gi;
 
-// English “shape” hints (multiple signals so we don’t collapse)
+// English “shape” hints
 const EN_COMMON = /\b(the|and|to|of|in|for|on|with|from|over|after|as|at|by|is|are|was|were|will|may|could|should|says|say|new|report|reports|amid|court|police|army|government|minister|crisis|attack|war|deal|talks|vote|election|trump|biden|u\.s\.|uk|eu|china|russia|iran|israel)\b/i;
 
-// If it has non-Latin script -> reject.
-// If it hits tripwire heavily -> reject.
-// Otherwise require some “English shape”: EN_COMMON OR a decent vowel ratio.
 function looksEnglish(title) {
   const t = String(title || "").trim();
   if (!t) return false;
   if (NON_LATIN.test(t)) return false;
 
-  // tripwire check
   const tw = t.match(NON_EN_TRIPWIRE);
   if (tw && tw.length >= 2) return false;
 
-  // English common words OR vowel ratio
   if (EN_COMMON.test(t)) return true;
 
-  // vowel ratio heuristic (helps headlines like “Zelenskyy meets…”)
+  // vowel ratio heuristic
   const letters = t.toLowerCase().replace(/[^a-z]/g, "");
   if (letters.length < 10) return false;
   const vowels = (letters.match(/[aeiouy]/g) || []).length;
   const ratio = vowels / letters.length;
-  return ratio >= 0.28; // English tends to be ~0.35-0.45; this is forgiving
+  return ratio >= 0.28;
 }
 
 // ---------- Doom scoring ----------
@@ -169,7 +158,7 @@ function scoreHeadline(title) {
   return scores;
 }
 
-// Power-mean average (leans higher than plain average; avoids “2” when bars are hot)
+// Average that “leans higher” than a plain average
 function doomFromCategoryScores(catScores) {
   const p = 1.35; // >1 biases upward
   let sum = 0;
@@ -184,7 +173,6 @@ function doomFromCategoryScores(catScores) {
 }
 
 function doomLabelFor(score) {
-  // Your exact ranges & copy
   if (score <= 20) return { label: "We’re so back.", tag: "Things are calm. Suspiciously calm. Enjoy it while it lasts." };
   if (score <= 40) return { label: "Mildly cursed timeline.", tag: "Nothing is technically broken, but the vibes are off." };
   if (score <= 60) return { label: "This is why aliens don’t visit.", tag: "Patterns are emerging. None of them are flattering to humanity." };
@@ -200,7 +188,7 @@ function barClass(pct) {
   return "fire";
 }
 
-// ---------- Fetch with timeout (prevents infinite Loading…) ----------
+// ---------- Fetch with timeout ----------
 async function fetchJsonWithTimeout(url, ms = 12000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ms);
@@ -225,10 +213,8 @@ function buildGdeltUrl(query, timespan, maxrecords) {
   u.searchParams.set("maxrecords", String(maxrecords));
   u.searchParams.set("timespan", timespan);
 
-  // GDELT-side English request (still imperfect; we do client-side too)
+  // Ask GDELT for English (still imperfect, we also filter client-side)
   u.searchParams.set("sourcelang", "English");
-
-  // Query text
   u.searchParams.set("query", query);
 
   return u.toString();
@@ -296,7 +282,6 @@ async function run() {
   safeText(el.sample, "Sample: —");
   safeText(el.ver, VERSION);
 
-  // Fetch attempt 1: DEFAULT_QUERY
   let query = DEFAULT_QUERY;
   let url = buildGdeltUrl(query, TIMESPAN, MAX_RECORDS);
 
@@ -306,7 +291,6 @@ async function run() {
   try {
     data = await fetchJsonWithTimeout(url, 12000);
   } catch (e) {
-    // Try fallback query
     usedFallback = true;
     query = DEFAULT_QUERY_FALLBACK;
     url = buildGdeltUrl(query, TIMESPAN, MAX_RECORDS);
@@ -315,21 +299,15 @@ async function run() {
 
   const raw = Array.isArray(data?.articles) ? data.articles : [];
 
-  // English-only filtering (client-side)
   const english = raw.filter(a => looksEnglish(a.title));
-
-  // If we still got too few, we *don’t* loosen to non-English.
-  // Instead, we show what we have and explain counts.
   const usable = english.slice(0, 80);
 
-  // Count info
   safeText(el.status, `Omens readable. (English: ${english.length} → ${usable.length})${usedFallback ? " (fallback)" : ""}`);
   safeText(el.updated, `Updated: ${nowStamp()}`);
   safeText(el.sample, `Sample: ${usable.length} headlines`);
   safeText(el.filterPill, "Filter: English ONLY / Global");
   safeText(el.okPill, "OK");
 
-  // Aggregate scores
   const catTotals = {};
   for (const c of CATS) catTotals[c.key] = 0;
 
@@ -337,9 +315,10 @@ async function run() {
 
   for (const a of usable) {
     const scores = scoreHeadline(a.title);
-    for (const c of CATS) catTotals[c.key] = Math.min(CATEGORY_MAX, (catTotals[c.key] || 0) + Math.min(6, scores[c.key] || 0));
+    for (const c of CATS) {
+      catTotals[c.key] = Math.min(CATEGORY_MAX, (catTotals[c.key] || 0) + Math.min(6, scores[c.key] || 0));
+    }
 
-    // driver words: just keyword hits
     const t = String(a.title || "").toLowerCase();
     for (const c of CATS) {
       for (const kw of c.keywords) {
@@ -348,7 +327,6 @@ async function run() {
     }
   }
 
-  // Doom number (average leaning higher)
   const doom = doomFromCategoryScores(catTotals);
   const label = doomLabelFor(doom);
 
@@ -356,7 +334,6 @@ async function run() {
   safeText(el.doomLabel, label.label);
   safeText(el.doomTag, label.tag);
 
-  // Main meter fill
   const doomPct = Math.max(0, Math.min(100, doom));
   const klass = barClass(doomPct);
   if (el.doomFill) {
