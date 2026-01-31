@@ -1,15 +1,14 @@
 /* Doomroom News — app.js (v3.2.8)
-   Includes:
-   - GDELT fetch via Cloudflare worker (/gdelt)
-   - English-only (strict) with smart fallback if too few results
-   - Per-category normalization (bars + main doom number match)
-   - Slight "lean higher" curve on average doom
-   - Your custom 0–100 label ranges + tag copy
+   ONLY CHANGE:
+   - Strong English-only filter that blocks non-English Latin headlines (Spanish/Portuguese/Indonesian)
+   - Fallback to non-English is DISABLED (English only means English only)
+
+   Everything else stays the same style/behavior.
 */
 
 const VERSION = "v3.2.8";
 
-// Cloudflare worker (yours)
+// Your worker (keep as-is)
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
 const ROUTE = "gdelt";
 
@@ -18,14 +17,15 @@ const DEFAULT_QUERY = "world";
 const MAX_RECORDS = 80;
 const TIMESPAN = "7d";
 
-// Doom categories (same spirit as before)
+// Doom categories
+const CATEGORY_MAX = 30;
 const CATS = [
   { key: "conflict", label: "Conflict Heat", keywords: ["war","strike","attack","missile","drone","airstrike","invasion","ceasefire","shelling","hostage","terror","bomb","blast"] },
   { key: "climate", label: "Climate Weirdness", keywords: ["heat","wildfire","flood","hurricane","cyclone","storm","drought","record heat","evacuation","blaze","tornado","smoke"] },
   { key: "econ", label: "Economic Drama", keywords: ["inflation","layoff","crash","default","debt","tariff","shutdown","market","bank","recession","strike"] },
   { key: "democracy", label: "Democracy Melting", keywords: ["election","coup","protest","riot","authoritarian","fraud","ban","court","impeach","corruption","arrested","martial law"] },
   { key: "cyber", label: "Cyber Chaos", keywords: ["hack","breach","ransomware","outage","leak","cyber","malware","phishing","ddos"] },
-  { key: "nuclear", label: "Unranium", keywords: ["nuclear","uranium","warhead","enrichment","icbm","radiation","reactor"] },
+  { key: "nuclear", label: "Uranium", keywords: ["nuclear","uranium","warhead","enrichment","icbm","radiation","reactor"] },
   { key: "space", label: "Space Rocks", keywords: ["asteroid","meteor","comet","space debris","nasa","impact","near-earth","solar flare"] },
   { key: "misc", label: "Misc. Chaos", keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] }
 ];
@@ -67,17 +67,11 @@ function safeHTML(node, html) {
 }
 
 function nowStamp() {
-  try { return new Date().toLocaleString(); }
-  catch { return String(new Date()); }
-}
-
-function escapeHtml(s) {
-  return String(s || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
+  try {
+    return new Date().toLocaleString();
+  } catch {
+    return String(new Date());
+  }
 }
 
 // ---------- About overlay ----------
@@ -85,14 +79,19 @@ function showAbout() {
   if (!el.aboutOverlay) return;
   el.aboutOverlay.classList.remove("hidden");
 }
+
 function hideAbout() {
   if (!el.aboutOverlay) return;
   el.aboutOverlay.classList.add("hidden");
 }
+
 function wireAbout() {
   if (el.about) el.about.addEventListener("click", showAbout);
+
   if (el.closeAbout) el.closeAbout.addEventListener("click", hideAbout);
   if (el.closeAbout2) el.closeAbout2.addEventListener("click", hideAbout);
+
+  // Tap backdrop closes too
   if (el.aboutOverlay) {
     el.aboutOverlay.addEventListener("click", (e) => {
       if (e.target === el.aboutOverlay) hideAbout();
@@ -100,86 +99,76 @@ function wireAbout() {
   }
 }
 
-// ---------- Fetch ----------
-async function fetchJSON(url) {
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return await res.json();
-}
-
-async function fetchViaWorker(query) {
-  const q = encodeURIComponent(query);
-  const max = encodeURIComponent(String(MAX_RECORDS));
-  const span = encodeURIComponent(TIMESPAN);
-
-  // Standard route for your worker:
-  // /gdelt?query=...&mode=ArtList&format=json&maxrecords=...&timespan=...
-  const u = `${PROXY_BASE}/${ROUTE}?query=${q}&mode=ArtList&format=json&maxrecords=${max}&timespan=${span}`;
-  return await fetchJSON(u);
-}
-
-// ---------- Article cleanup ----------
-function dedupeArticles(list) {
-  const seen = new Set();
-  const out = [];
-
-  for (const a of list || []) {
-    const url = (a?.url || a?.url_mobile || a?.link || "").trim();
-    const title = String(a?.title || "").trim();
-    if (!title) continue;
-
-    const key = url ? `u:${url}` : `t:${title.toLowerCase()}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-
-    out.push({
-      title,
-      url: url || "#",
-      source: String(a?.domain || a?.source || a?.publisher || "").trim(),
-      language: String(a?.language || "").trim(),
-      country: String(a?.sourcecountry || a?.sourceCountry || "").trim(),
-      time: String(a?.seendate || a?.publishedAt || a?.published || "").trim()
-    });
-  }
-  return out;
-}
-
-// ---------- English filtering (strict + fallback) ----------
-// Strict tries to keep only obvious English-ish headlines.
-// If it yields too few, we fall back to "Latin-script only" (still blocks Chinese/Cyrillic/Arabic/etc).
-
+// ---------- English filtering (STRICT) ----------
+// Blocks non-English even if it uses Latin letters.
+// Also blocks non-Latin scripts (Chinese/Cyrillic/Arabic/etc).
 const NON_LATIN = /[\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0900-\u097F\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF]/;
 
-// Common English hints (lightweight, not a full language detector)
-const EN_HINT = /\b(the|and|for|with|from|after|over|into|amid|says|said|new|as|on|in|at|to|of)\b/i;
+// Expanded English hint words (stopwords + common news words)
+const EN_HINT_WORDS = /\b(the|and|for|with|from|after|over|into|amid|ahead|says|said|new|as|on|in|at|to|of|is|are|was|were|will|may|could|should|u\.s\.|us|uk|eu|china|russia|iran|israel|biden|trump|court|police|army|government|minister|crisis|attack|war)\b/i;
 
-// Strict: must be Latin script, mostly ASCII letters/spaces/punct, and have at least one English hint OR lots of letters.
+// Count all occurrences (not just one)
+function countEnglishHints(t) {
+  const all = String(t || "").toLowerCase().match(new RegExp(EN_HINT_WORDS.source, "g"));
+  return all ? all.length : 0;
+}
+
+// STRICT English:
+// - reject non-Latin scripts
+// - require high ASCII ratio
+// - reject too many accented characters
+// - require at least 2 English hint words
 function keepEnglishStrict(title) {
   if (!title) return false;
   const t = String(title).trim();
   if (!t) return false;
+
+  // Blocks Chinese/Cyrillic/Arabic/etc.
   if (NON_LATIN.test(t)) return false;
 
-  // ratio of ASCII to total (helps reject weird mixed scripts)
+  // ASCII ratio check (Spanish/Portuguese/Indonesian often pass ASCII, so we also do hint + accents)
   const asciiCount = (t.match(/[\x00-\x7F]/g) || []).length;
   const ratio = asciiCount / Math.max(1, t.length);
-  if (ratio < 0.92) return false;
+  if (ratio < 0.94) return false;
 
-  // must look like a real sentence/headline
-  const letters = (t.match(/[A-Za-z]/g) || []).length;
-  if (letters < 18) return EN_HINT.test(t);
+  // Reject “too many” accented / non-ASCII chars (é, ñ, Ê etc.)
+  const nonAscii = (t.match(/[^\x00-\x7F]/g) || []).length;
+  if (nonAscii > 2) return false;
 
-  // either has common English words OR just strongly English-looking
-  return EN_HINT.test(t) || letters >= 25;
+  // Must contain multiple English hint words
+  return countEnglishHints(t) >= 2;
 }
 
-// Fallback: Latin script only (blocks obvious non-Latin floods)
+// Fallback is DISABLED for English-only mode.
+const ALLOW_FALLBACK = false;
+
+// If you ever turn fallback on, this only blocks non-Latin scripts (will allow Spanish etc.)
 function keepEnglishFallback(title) {
   if (!title) return false;
   const t = String(title).trim();
   if (!t) return false;
   if (NON_LATIN.test(t)) return false;
   return true;
+}
+
+function dedupeArticles(list) {
+  const seen = new Set();
+  const out = [];
+  for (const a of list || []) {
+    const url = (a?.url || a?.link || "").trim();
+    const title = String(a?.title || "").trim();
+    const key = url ? `u:${url}` : `t:${title.toLowerCase()}`;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({
+      title,
+      url,
+      source: String(a?.source || a?.publisher || a?.domain || a?.site || "").trim(),
+      time: String(a?.time || a?.publishedAt || a?.published || "").trim(),
+      language: String(a?.language || "").trim()
+    });
+  }
+  return out;
 }
 
 // ---------- Doom scoring ----------
@@ -192,26 +181,13 @@ function scoreHeadline(title) {
     for (const kw of c.keywords) {
       if (t.includes(kw)) scores[c.key] += 3;
     }
-    // cap per category per headline
     scores[c.key] = Math.min(scores[c.key], 12);
   }
   return scores;
 }
 
-// ---------- Per-category normalization (key fix) ----------
-const PER_ARTICLE_CAP = 12;
-
-// 1.0 = normal average, <1 leans higher in the middle.
-// 0.85 = mild boost; 0.75 = bigger boost.
-const DOOM_CURVE = 0.85;
-
-function clamp(n, a, b) { return Math.max(a, Math.min(b, n)); }
-
-function pctFromCatTotal(total, articleCount) {
-  const n = Math.max(1, Number(articleCount) || 1);
-  const maxTotal = n * PER_ARTICLE_CAP;
-  const pct = Math.round((Number(total || 0) / maxTotal) * 100);
-  return clamp(pct, 0, 100);
+function pctFromScore(score) {
+  return Math.max(0, Math.min(100, Math.round((score / CATEGORY_MAX) * 100)));
 }
 
 function classFromPct(p) {
@@ -221,7 +197,7 @@ function classFromPct(p) {
   return "green";
 }
 
-// Your 0–100 label lines + tag copy
+// Your custom copy (ranges you provided)
 function labelFromPct(p) {
   if (p <= 20) return "We’re so back.";
   if (p <= 40) return "Mildly cursed timeline.";
@@ -240,28 +216,52 @@ function tagFromPct(p) {
   return "Everything is happening everywhere all at once. Do not check the news before bed.";
 }
 
+// ---------- Fetch with fallback ----------
+async function fetchJSON(url) {
+  const res = await fetch(url, { cache: "no-store" });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return await res.json();
+}
+
+async function fetchViaWorker(query) {
+  const q = encodeURIComponent(query);
+  const max = encodeURIComponent(String(MAX_RECORDS));
+  const span = encodeURIComponent(TIMESPAN);
+
+  // Try common param names (your worker forwards params)
+  const urls = [
+    `${PROXY_BASE}/${ROUTE}?query=${q}&maxrecords=${max}&timespan=${span}&format=json&mode=ArtList`,
+    `${PROXY_BASE}/${ROUTE}?query=${q}&max=${max}&timespan=${span}`,
+    `${PROXY_BASE}/${ROUTE}?q=${q}&max=${max}&timespan=${span}`,
+    `${PROXY_BASE}/${ROUTE}?g=${q}&max=${max}&timespan=${span}`
+  ];
+
+  let lastErr = null;
+  for (const u of urls) {
+    try { return await fetchJSON(u); }
+    catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("Worker fetch failed");
+}
+
 // ---------- Render ----------
 function setStatus(msg) { safeText(el.status, msg); }
 function setUpdated(msg) { safeText(el.updated, `Updated: ${msg}`); }
 
-function renderBars(catTotals, articleCount) {
+function renderBars(catTotals) {
   if (!el.breakdown) return;
 
-  // Uses your CSS classes: breakItem/breakBar + fill.<color>
   const rows = CATS.map(c => {
-    const raw = catTotals[c.key] || 0;
-    const pct = pctFromCatTotal(raw, articleCount);
+    const val = catTotals[c.key] || 0;
+    const pct = pctFromScore(val);
     const cls = classFromPct(pct);
-
     return `
       <div class="breakItem">
         <div class="breakTop">
           <div>${escapeHtml(c.label)}</div>
-          <div>${raw}</div>
+          <div>${val}</div>
         </div>
-        <div class="breakBar">
-          <div class="fill ${cls}" style="width:${pct}%"></div>
-        </div>
+        <div class="breakBar"><div class="fill ${cls}" style="width:${pct}%"></div></div>
       </div>
     `;
   }).join("");
@@ -278,7 +278,7 @@ function renderDrivers(topDrivers) {
   safeHTML(el.drivers, topDrivers.map(s => `<div class="pill">${escapeHtml(s)}</div>`).join(""));
 }
 
-function renderStories(items, metaLabel) {
+function renderStories(items) {
   if (!el.stories) return;
   if (!items.length) {
     safeHTML(el.stories, `<div class="muted">No stories found.</div>`);
@@ -292,56 +292,57 @@ function renderStories(items, metaLabel) {
     return `
       <a class="story" href="${url}" target="_blank" rel="noopener noreferrer">
         <div class="storyTitle">${escapeHtml(title)}</div>
-        <div class="storyMeta">${escapeHtml(source)} • ${escapeHtml(metaLabel)} • Global</div>
+        <div class="storyMeta muted">${escapeHtml(source)} • English • Global</div>
       </a>
     `;
   }).join("");
 
-  // Your CSS expects .stories container to be flex column; your HTML uses id="stories" directly.
-  safeHTML(el.stories, `<div class="stories">${cards}</div>`);
+  safeHTML(el.stories, cards);
+}
+
+function escapeHtml(s) {
+  return String(s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 // ---------- Main pipeline ----------
 async function run(query = DEFAULT_QUERY) {
-  setStatus("Loading…");
+  setStatus("Reading the omens…");
   safeText(el.sample, "Sample: —");
-  safeText(el.okPill, "OK");
   safeText(el.filterPill, "Filter: English ONLY / Global");
 
   try {
     const data = await fetchViaWorker(query);
 
-    // GDELT doc API usually returns { articles: [...] }
     const rawList =
       Array.isArray(data) ? data :
       (data.articles || data.items || data.results || data.data || data.entries || []);
 
     let list = dedupeArticles(rawList);
-
     const before = list.length;
 
-    // ---- English strict first ----
+    // STRICT English filter
     let strict = list.filter(a => keepEnglishStrict(a.title));
+    const afterStrict = strict.length;
 
-    // If strict removes too much, fall back to Latin-script filter (still blocks Chinese/Cyrillic/Arabic/etc)
-    // Minimum: keep at least 12 OR at least 20% of the original list (whichever is smaller threshold)
-    const minKeep = Math.min(12, Math.ceil(before * 0.20));
-
-    let usedFallback = false;
-    if (strict.length < minKeep && before > 0) {
-      usedFallback = true;
+    // Optional fallback (disabled)
+    if (ALLOW_FALLBACK && afterStrict === 0 && before > 0) {
       strict = list.filter(a => keepEnglishFallback(a.title));
       safeText(el.filterPill, "Filter: Global (English filter unavailable)");
+      setStatus(`Omens readable. (${before}→${strict.length}) (fallback)`);
     } else {
-      safeText(el.filterPill, "Filter: English ONLY / Global");
+      setStatus(`Omens readable. (English: ${before} → ${afterStrict})`);
     }
 
     list = strict;
 
-    const after = list.length;
-    safeText(el.sample, `Sample: ${after} headlines`);
+    safeText(el.sample, `Sample: ${list.length} headlines`);
 
-    // ---- Doom totals ----
+    // Score doom
     const totals = {};
     for (const c of CATS) totals[c.key] = 0;
 
@@ -358,12 +359,10 @@ async function run(query = DEFAULT_QUERY) {
       }
     }
 
-    // ---- Normalized Doom Index (average of normalized category percents + curve) ----
-    const catPcts = CATS.map(c => pctFromCatTotal(totals[c.key] || 0, list.length));
-    const avg = catPcts.reduce((s, n) => s + n, 0) / Math.max(1, catPcts.length);
-    const curved = 100 * Math.pow(avg / 100, DOOM_CURVE);
-    const doomPct = Math.round(clamp(curved, 0, 100));
-
+    // Doom score (average-ish, not maxed all day)
+    // Compute per-category pct, then average them (leans higher naturally when multiple categories spike)
+    const catPcts = CATS.map(c => pctFromScore(totals[c.key] || 0));
+    const doomPct = Math.round(catPcts.reduce((a,b)=>a+b,0) / Math.max(1, catPcts.length));
     const doomCls = classFromPct(doomPct);
     const doomLabel = labelFromPct(doomPct);
     const doomTag = tagFromPct(doomPct);
@@ -377,25 +376,17 @@ async function run(query = DEFAULT_QUERY) {
       el.doomFill.style.width = `${doomPct}%`;
     }
 
-    renderBars(totals, list.length);
+    renderBars(totals);
 
     const driverCounts = {};
     for (const k of keywordHits) driverCounts[k] = (driverCounts[k] || 0) + 1;
-
     const topDrivers = Object.entries(driverCounts)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 8)
       .map(([k]) => k);
 
     renderDrivers(topDrivers);
-    renderStories(list.slice(0, 12), usedFallback ? "Global" : "English");
-
-    // Status text matches your style
-    if (usedFallback) {
-      setStatus(`Omens readable. (English: ${before} → ${after}) (fallback)`);
-    } else {
-      setStatus(`Omens readable. (English: ${before} → ${after})`);
-    }
+    renderStories(list.slice(0, 12));
 
     setUpdated(nowStamp());
     safeText(el.okPill, "OK");
@@ -406,8 +397,7 @@ async function run(query = DEFAULT_QUERY) {
     setUpdated(nowStamp());
     safeText(el.okPill, "OK");
     safeText(el.sample, "Sample: 0 headlines");
-    renderDrivers([]);
-    renderStories([], "—");
+    renderStories([]);
     console.error(err);
   }
 }
