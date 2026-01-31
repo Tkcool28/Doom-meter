@@ -12,8 +12,8 @@
   <link rel="icon" type="image/png" sizes="16x16" href="./icons/favicon-16.png">
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 
-  <!-- ✅ HARD CACHE BUST -->
-  <link rel="stylesheet" href="./styles.css?v=3230" />
+  <!-- IMPORTANT: cache-bust CSS -->
+  <link id="cssLink" rel="stylesheet" href="./styles.css?v=INDEX_330" />
 </head>
 
 <body>
@@ -29,6 +29,12 @@
           <button id="btnAbout" type="button">About</button>
           <div id="statusPill" class="pill muted">Loading…</div>
           <div id="updatedPill" class="pill muted">Updated: —</div>
+        </div>
+
+        <!-- Escape hatch indicator -->
+        <div id="noswBanner" style="display:none;margin-top:10px;padding:10px 12px;border-radius:12px;
+          background:rgba(255,0,0,.12);border:1px solid rgba(255,0,0,.35);color:#ffd7d7;font-size:13px;">
+          Service Worker is <strong>DISABLED</strong> (nosw=1). Remove <code>?nosw=1</code> to re-enable.
         </div>
       </div>
 
@@ -78,7 +84,7 @@
     <div class="overlayCard">
       <div class="overlayTitle">☄️ Doomroom News</div>
       <div class="overlaySub muted">
-        <span id="aboutVersion">v—</span> • DoomWorks Interstellar
+        <span id="aboutVersion">v—</span> • DoomWorks Interstellar • DoomWorks Interstellar
       </div>
 
       <p>
@@ -98,19 +104,45 @@
 
   <noscript>This app needs JavaScript to read the omens.</noscript>
 
-  <!-- ✅ HARD CACHE BUST -->
-  <script src="./app.js?v=3230" defer></script>
-
   <script>
+    // ---- Version string used to bust browser cache for app.js/styles.css ----
+    // Change this value whenever you want to force-refresh everything.
+    const BUILD = "INDEX_330";
+
+    // Update CSS href with build value (in case browser cached the HTML)
     (function () {
+      const css = document.getElementById("cssLink");
+      if (css) css.href = "./styles.css?v=" + encodeURIComponent(BUILD);
+    })();
+
+    // ---- Service Worker escape hatch ----
+    (function () {
+      const params = new URLSearchParams(location.search);
+      const noSW = params.get("nosw") === "1";
+
+      if (noSW) {
+        const b = document.getElementById("noswBanner");
+        if (b) b.style.display = "block";
+
+        // Try to unregister any existing SW registrations for this scope
+        if ("serviceWorker" in navigator) {
+          navigator.serviceWorker.getRegistrations().then((regs) => {
+            regs.forEach((r) => r.unregister());
+          }).catch(() => {});
+        }
+        return; // DO NOT register SW
+      }
+
+      // Normal SW registration
       if (!("serviceWorker" in navigator)) return;
       window.addEventListener("load", function () {
-        // ✅ CRITICAL FIX:
-        // Force scope to /Doom-meter/ so it overrides any old root service worker.
-        navigator.serviceWorker.register("./sw.js?v=3230", { scope: "/Doom-meter/" })
-          .catch(function(){});
+        navigator.serviceWorker.register("./sw.js", { scope: "./" }).catch(function(){});
       });
     })();
   </script>
+
+  <!-- IMPORTANT: load app.js with cache-busting -->
+  <script src="./app.js?v=INDEX_330" defer></script>
+
 </body>
 </html>
