@@ -1,41 +1,40 @@
-/* Doomroom News — app.js (v3.3.1)
-   Fixes:
-   - Prevents “stuck loading” via fetch timeout + always-updating UI
-   - English-only filter that doesn’t collapse to 2 articles
-   - Blocks non-Latin scripts (Chinese/Cyrillic/Arabic/etc)
-   - Blocks common non-English Latin headlines via “tripwire” words
-   - Doom score is an average that "leans higher" (power-mean)
-*/
+/*
+ * Doomroom News — app.js
+ * English-only fix:
+ *  - DO NOT trust GDELT "language" field (often wrong)
+ *  - Filter by title text (strict English heuristics)
+ *  - Pill shows Strict English before→after
+ */
 
-const VERSION = "v3.3.1";
+const VERSION = "v3.3.0";
 
-// Your Cloudflare Worker
+// Your worker
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
 const ROUTE = "gdelt";
 
 // Content knobs
 const DEFAULT_QUERY = "world";
-const MAX_RECORDS = 160;     // fetch more so English filter has room
-const TIMESPAN = "7d";
+const MAX_RECORDS = 160;   // fetch more so English filter has room
+const TIMESSPAN = "7d";
 
 // Doom categories
-const CATEGORY_MAX = 30; // per-category cap to normalize bars
+const CATEGORY_MAX = 30;
 const CATS = [
-  { key: "conflict", label: "Conflict Heat", keywords: ["war","attack","strike","missile","drone","invasion","ceasefire","shelling","hostage","terror","bomb","blast"] },
-  { key: "climate", label: "Climate Weirdness", keywords: ["heatwave","wildfire","flood","hurricane","cyclone","storm","drought","record heat","evacuation","blaze","tornado","smoke"] },
-  { key: "econ", label: "Economic Drama", keywords: ["inflation","layoff","crash","default","debt","tariff","shutdown","market","bank","recession","strike"] },
+  { key: "conflict",  label: "Conflict Heat",     keywords: ["war","attack","missile","drone","strike","invasion","ceasefire","shelling","hostage","terror","bomb","blast"] },
+  { key: "climate",   label: "Climate Weirdness", keywords: ["heat","wildfire","flood","hurricane","cyclone","storm","drought","evacuation","tornado","smoke","record heat","blaze"] },
+  { key: "economy",   label: "Economic Drama",    keywords: ["inflation","layoff","crash","default","debt","tariff","shutdown","market","bank","recession","strike"] },
   { key: "democracy", label: "Democracy Melting", keywords: ["election","coup","protest","riot","authoritarian","fraud","ban","court","impeach","corruption","arrested","martial law"] },
-  { key: "cyber", label: "Cyber Chaos", keywords: ["hack","breach","ransomware","outage","leak","cyber","malware","phishing","ddos"] },
-  { key: "nuclear", label: "Uranium", keywords: ["nuclear","uranium","warhead","enrichment","icbm","radiation","reactor"] },
-  { key: "space", label: "Space Rocks", keywords: ["asteroid","meteor","comet","space debris","nasa","impact","near earth","solar flare"] },
-  { key: "misc", label: "Misc. Chaos", keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] }
+  { key: "cyber",     label: "Cyber Chaos",       keywords: ["hack","breach","ransomware","outage","leak","cyber","malware","phishing","ddos"] },
+  { key: "nuclear",   label: "Uranium",           keywords: ["nuclear","uranium","warhead","enrichment","icbm","radiation","reactor"] },
+  { key: "space",     label: "Space Rocks",       keywords: ["asteroid","meteor","comet","space debris","nasa","impact","near-earth"] },
+  { key: "misc",      label: "Misc. Chaos",       keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] },
 ];
 
-// Query fallback (keeps it relevant if "world" fails)
-const DEFAULT_QUERY_FALLBACK =
+// Default query (works well with the worker)
+const DEFAULT_Q =
   "war OR attack OR missile OR drone OR nuclear OR election OR protest OR coup OR inflation OR layoff OR ransomware OR breach OR wildfire OR flood OR hurricane";
 
-// DOM helpers
+// ---------- DOM helpers ----------
 const $ = (id) => document.getElementById(id);
 
 const el = {
@@ -43,13 +42,16 @@ const el = {
   about: $("btnAbout"),
   status: $("statusPill"),
   updated: $("updatedPill"),
+
   doomNum: $("doomNum"),
   doomLabel: $("doomLabel"),
   doomTag: $("doomTag"),
   doomFill: $("doomFill"),
+
   sample: $("samplePill"),
   okPill: $("okPill"),
   filterPill: $("filterPill"),
+
   breakdown: $("breakdown"),
   drivers: $("drivers"),
   stories: $("stories"),
@@ -65,13 +67,12 @@ function safeText(node, txt) {
   if (!node) return;
   node.textContent = String(txt ?? "");
 }
-function safeHTML(node, html) {
+function safeHtml(node, html) {
   if (!node) return;
   node.innerHTML = html;
 }
 function nowStamp() {
-  try { return new Date().toLocaleString(); }
-  catch { return String(new Date()); }
+  try { return new Date().toLocaleString(); } catch { return String(new Date()); }
 }
 function escapeHtml(s) {
   return String(s || "")
@@ -103,44 +104,50 @@ function wireAbout() {
   if (el.aboutVersion) safeText(el.aboutVersion, VERSION);
 }
 
-// ---------- Crash reporting ----------
-function showFatal(where, err) {
-  const msg = `${where}: ${String(err && err.message ? err.message : err)}`.slice(0, 220);
-  safeText(el.status, `Error — ${msg}`);
-  safeText(el.updated, `Updated: ${nowStamp()}`);
-  safeText(el.sample, "Sample: —");
-  safeText(el.ver, VERSION);
+// =========================================================
+// ✅ ENGLISH-ONLY FIX (DO NOT TRUST GDELT "language")
+// =========================================================
+
+// Reject anything with non-Latin scripts (CJK/Cyrillic/Arabic etc)
+const NON_LATIN =
+  /[\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\u0900-\u097F\u0E00-\u0E7F\u1100-\u11FF\u2E80-\u2EFF\u2F00-\u2FDF\u3040-\u30FF\u31F0-\u31FF\u3400-\u4DBF\u4E00-\u9FFF\uAC00-\uD7AF]/;
+
+// Require >=2 common English words
+const EN_COMMON_WORDS =
+  /\b(the|and|of|to|in|for|on|with|as|by|from|at|after|before|over|under|into|out|about|near|amid|says|say|warns|new|plan|plans|report|reports|deal|talks|vote|war|attack|strike|missile|drone|election|court|police|government|minister|crisis)\b/gi;
+
+// Non-English Latin “tripwire” words (Portuguese/Spanish/Indonesian/etc)
+const NON_EN_TRIPWIRE = /\b(
+  da|de|do|dos|das|uma|um|ao|aos|na|nas|no|nos|para|por|porque|entre|contra|sobre|mais|menos|tambem|entao|sao|foi|ser|tem|
+  que|seu|sua|seus|suas|mundo|melhor|assassinad[ao]|denuncia|delegad[oa]|
+  yang|dan|di|ke|dari|untuk|pada|ini|itu|atau|kami|kamu|mereka|bisa|siap|ajukan|diri|sebagai|tuan|rumah|piala|dunia|batal|begini|kata|pakar|
+  el|la|los|las|una|un|del|al|por|para|con|como|pero|porque|mundo|
+  le|la|les|des|une|un|du|au|aux|pour|avec|dans|sur
+)\b/ix;
+
+function asciiLetterRatio(s) {
+  const letters = (s.match(/[A-Za-z]/g) || []).length;
+  const nonAscii = (s.match(/[^\x00-\x7F]/g) || []).length;
+  const total = letters + nonAscii;
+  if (!total) return 0;
+  return letters / total;
 }
-window.addEventListener("error", (e) => showFatal("JS error", e.error || e.message));
-window.addEventListener("unhandledrejection", (e) => showFatal("Promise", e.reason));
 
-// ---------- English-only filter ----------
-// Blocks non-Latin scripts
-const NON_LATIN = /[\u0400-\u04FF\u0500-\u052F\u0600-\u06FF\u0590-\u05FF\u3040-\u30FF\uAC00-\uD7AF]/;
-
-// Tripwire words (Spanish/Portuguese/Indonesian patterns)
-// IMPORTANT: Valid JS regex flags only (no /x flag)
-const NON_EN_TRIPWIRE = /\b(de|la|el|los|las|una|un|para|por|con|sin|del|al|que|y|en|da|do|dos|das|uma|um|com|sem|nao|não|na|no|nos|nas|yang|dan|atau|dengan|untuk|pada|ini|itu|dari|ke|di|sebagai|telah|akan|juga|tidak|bisa|terkait|menjadi)\b/gi;
-
-// English “shape” hints
-const EN_COMMON = /\b(the|and|to|of|in|for|on|with|from|over|after|as|at|by|is|are|was|were|will|may|could|should|says|say|new|report|reports|amid|court|police|army|government|minister|crisis|attack|war|deal|talks|vote|election|trump|biden|u\.s\.|uk|eu|china|russia|iran|israel)\b/i;
-
-function looksEnglish(title) {
+function isStrictEnglishTitle(title) {
   const t = String(title || "").trim();
   if (!t) return false;
+
   if (NON_LATIN.test(t)) return false;
 
-  const tw = t.match(NON_EN_TRIPWIRE);
-  if (tw && tw.length >= 2) return false;
+  const lower = t.toLowerCase();
+  if (NON_EN_TRIPWIRE.test(lower)) return false;
 
-  if (EN_COMMON.test(t)) return true;
+  const hits = (lower.match(EN_COMMON_WORDS) || []).length;
+  if (hits < 2) return false;
 
-  // vowel ratio heuristic
-  const letters = t.toLowerCase().replace(/[^a-z]/g, "");
-  if (letters.length < 10) return false;
-  const vowels = (letters.match(/[aeiouy]/g) || []).length;
-  const ratio = vowels / letters.length;
-  return ratio >= 0.28;
+  if (asciiLetterRatio(t) < 0.85) return false;
+
+  return true;
 }
 
 // ---------- Doom scoring ----------
@@ -153,212 +160,234 @@ function scoreHeadline(title) {
     for (const kw of c.keywords) {
       if (t.includes(kw)) scores[c.key] += 3;
     }
-    scores[c.key] = Math.min(scores[c.key], CATEGORY_MAX);
+    scores[c.key] = Math.min(scores[c.key], 12);
   }
   return scores;
 }
 
-// Average that “leans higher” than a plain average
-function doomFromCategoryScores(catScores) {
-  const p = 1.35; // >1 biases upward
-  let sum = 0;
-  let k = 0;
-  for (const c of CATS) {
-    const n = Math.min(1, (catScores[c.key] || 0) / CATEGORY_MAX);
-    sum += Math.pow(n, p);
-    k++;
-  }
-  const mean = k ? Math.pow(sum / k, 1 / p) : 0;
-  return Math.round(mean * 100);
+function colorClassForDoom(n) {
+  if (n >= 80) return "fire";
+  if (n >= 55) return "red";
+  if (n >= 30) return "yellow";
+  return "green";
 }
 
-function doomLabelFor(score) {
-  if (score <= 20) return { label: "We’re so back.", tag: "Things are calm. Suspiciously calm. Enjoy it while it lasts." };
-  if (score <= 40) return { label: "Mildly cursed timeline.", tag: "Nothing is technically broken, but the vibes are off." };
-  if (score <= 60) return { label: "This is why aliens don’t visit.", tag: "Patterns are emerging. None of them are flattering to humanity." };
-  if (score <= 80) return { label: "Please put your trays into their upright position, and fasten your seat belts.", tag: "Multiple systems are wobbling. Turbulence ahead." };
-  if (score <= 95) return { label: "Apocalypse-adjacent.", tag: "Not the end of the world, but it’s definitely in the waiting room." };
+// Your 0–100 labels (kept)
+function labelForDoom(n) {
+  if (n <= 20) return { label: "We’re so back.", tag: "Things are calm. Suspiciously calm. Enjoy it while it lasts." };
+  if (n <= 40) return { label: "Mildly cursed timeline.", tag: "Nothing is technically broken, but the vibes are off." };
+  if (n <= 60) return { label: "This is why aliens don’t visit.", tag: "Patterns are emerging. None of them are flattering to humanity." };
+  if (n <= 80) return { label: "Please fasten your seat belts.", tag: "Multiple systems are wobbling. Turbulence ahead." };
+  if (n <= 95) return { label: "Apocalypse-adjacent.", tag: "Not the end of the world, but it’s definitely in the waiting room." };
   return { label: "Final Boss Week unlocked.", tag: "Everything is happening everywhere all at once. Do not check the news before bed." };
 }
 
-function barClass(pct) {
-  if (pct < 34) return "green";
-  if (pct < 67) return "yellow";
-  if (pct < 85) return "red";
-  return "fire";
-}
-
-// ---------- Fetch with timeout ----------
-async function fetchJsonWithTimeout(url, ms = 12000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ms);
-  try {
-    const resp = await fetch(url, { signal: controller.signal });
-    const text = await resp.text();
-    try {
-      return JSON.parse(text);
-    } catch {
-      throw new Error("Upstream returned non-JSON");
-    }
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-// ---------- Build GDELT URL ----------
-function buildGdeltUrl(query, timespan, maxrecords) {
-  const u = new URL(`${PROXY_BASE}/${ROUTE}`);
-  u.searchParams.set("format", "json");
-  u.searchParams.set("mode", "ArtList");
-  u.searchParams.set("maxrecords", String(maxrecords));
-  u.searchParams.set("timespan", timespan);
-
-  // Ask GDELT for English (still imperfect, we also filter client-side)
-  u.searchParams.set("sourcelang", "English");
-  u.searchParams.set("query", query);
-
-  return u.toString();
-}
-
-// ---------- Render ----------
+// ---------- Render helpers ----------
 function renderBreakdown(catTotals) {
-  let html = "";
-  for (const c of CATS) {
-    const val = catTotals[c.key] || 0;
-    const pct = Math.max(0, Math.min(100, Math.round((val / CATEGORY_MAX) * 100)));
-    const klass = barClass(pct);
-    html += `
+  if (!el.breakdown) return;
+
+  const maxVal = Math.max(1, ...Object.values(catTotals));
+  const rows = CATS.map((c) => {
+    const v = catTotals[c.key] || 0;
+    const pct = Math.max(0, Math.min(100, Math.round((v / maxVal) * 100)));
+    const cls = v >= 70 ? "fire" : v >= 40 ? "red" : v >= 20 ? "yellow" : "green";
+    return `
       <div class="breakItem">
         <div class="breakTop">
           <div>${escapeHtml(c.label)}</div>
-          <div>${val}</div>
+          <div class="muted">${v}</div>
         </div>
-        <div class="breakBar"><div class="fill ${klass}" style="width:${pct}%"></div></div>
+        <div class="breakBar"><div class="fill ${cls}" style="width:${pct}%"></div></div>
       </div>
     `;
-  }
-  safeHTML(el.breakdown, html);
+  }).join("");
+
+  safeHtml(el.breakdown, rows);
 }
 
-function renderDrivers(driverCounts) {
-  const entries = Object.entries(driverCounts)
-    .sort((a,b) => b[1] - a[1])
-    .slice(0, 10)
-    .map(([w]) => w);
-
-  if (!entries.length) {
-    safeHTML(el.drivers, `<div class="driverSub">No obvious drivers. Reality is being unusually polite.</div>`);
+function renderDrivers(topDrivers) {
+  if (!el.drivers) return;
+  if (!topDrivers.length) {
+    safeHtml(el.drivers, `<div class="driverSub">No obvious drivers. Reality is being unusually polite.</div>`);
     return;
   }
-  const pills = entries.map(w => `<span class="pill">${escapeHtml(w)}</span>`).join(" ");
-  safeHTML(el.drivers, pills);
+  const pills = topDrivers.map(w => `<span class="pill">${escapeHtml(w)}</span>`).join(" ");
+  safeHtml(el.drivers, pills);
 }
 
 function renderStories(articles) {
+  if (!el.stories) return;
   if (!articles.length) {
-    safeHTML(el.stories, `<div class="driverSub">No stories found.</div>`);
+    safeHtml(el.stories, `<div class="driverSub">No stories found.</div>`);
     return;
   }
-  const html = articles.slice(0, 20).map(a => {
+
+  const html = articles.slice(0, 25).map((a) => {
     const title = a.title || "(untitled)";
-    const domain = a.domain || "";
-    const lang = a.language || "";
-    const sc = a.sourcecountry || "";
     const url = a.url || "#";
+    const dom = a.domain || "";
+    const lang = a.language || "";
+    const cc = a.sourcecountry || "";
     return `
       <a class="story" href="${escapeHtml(url)}" target="_blank" rel="noopener">
         <div class="storyTitle">${escapeHtml(title)}</div>
-        <div class="storyMeta">${escapeHtml(domain)} • ${escapeHtml(lang)} • ${escapeHtml(sc)}</div>
+        <div class="storyMeta">${escapeHtml(dom)}${lang ? " • " + escapeHtml(lang) : ""}${cc ? " • " + escapeHtml(cc) : ""}</div>
       </a>
     `;
   }).join("");
-  safeHTML(el.stories, html);
+
+  safeHtml(el.stories, html);
 }
 
-// ---------- Main ----------
+// ---------- Fetch ----------
+async function fetchGdelt(query) {
+  const u = new URL(`${PROXY_BASE}/${ROUTE}`);
+  u.searchParams.set("format", "json");
+  u.searchParams.set("mode", "ArtList");
+  u.searchParams.set("maxrecords", String(MAX_RECORDS));
+  u.searchParams.set("timespan", TIMESSPAN);
+  u.searchParams.set("query", query || DEFAULT_Q);
+
+  // tiny cache-buster
+  u.searchParams.set("_", String(Date.now()));
+
+  const resp = await fetch(u.toString(), { method: "GET" });
+  const data = await resp.json();
+  return data;
+}
+
+// ---------- Main run ----------
 async function run() {
-  safeText(el.status, "Loading…");
   safeText(el.updated, "Updated: —");
+  safeText(el.status, "Loading…");
   safeText(el.sample, "Sample: —");
   safeText(el.ver, VERSION);
+  safeText(el.filterPill, "Filter: English ONLY / Global");
+  if (el.okPill) el.okPill.textContent = "OK";
 
-  let query = DEFAULT_QUERY;
-  let url = buildGdeltUrl(query, TIMESPAN, MAX_RECORDS);
+  // Clear old content
+  if (el.breakdown) safeHtml(el.breakdown, "");
+  if (el.drivers) safeHtml(el.drivers, "");
+  if (el.stories) safeHtml(el.stories, "");
+
+  // Skeleton values
+  safeText(el.doomNum, "—");
+  safeText(el.doomLabel, "—");
+  safeText(el.doomTag, "—");
+  if (el.doomFill) el.doomFill.style.width = "0%";
 
   let data;
-  let usedFallback = false;
-
   try {
-    data = await fetchJsonWithTimeout(url, 12000);
+    data = await fetchGdelt(DEFAULT_Q);
   } catch (e) {
-    usedFallback = true;
-    query = DEFAULT_QUERY_FALLBACK;
-    url = buildGdeltUrl(query, TIMESPAN, MAX_RECORDS);
-    data = await fetchJsonWithTimeout(url, 12000);
+    safeText(el.status, "Fetch failed.");
+    safeText(el.updated, `Updated: ${nowStamp()}`);
+    return;
   }
 
-  const raw = Array.isArray(data?.articles) ? data.articles : [];
+  const articles = Array.isArray(data?.articles) ? data.articles : [];
+  const before = articles.length;
 
-  const english = raw.filter(a => looksEnglish(a.title));
-  const usable = english.slice(0, 80);
+  // ✅ Strict English filtering by TITLE (not by a.language)
+  let strictEnglish = articles.filter(a => isStrictEnglishTitle(a?.title));
 
-  safeText(el.status, `Omens readable. (English: ${english.length} → ${usable.length})${usedFallback ? " (fallback)" : ""}`);
+  // de-dupe by title
+  const seen = new Set();
+  strictEnglish = strictEnglish.filter(a => {
+    const key = String(a?.title || "").trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const after = strictEnglish.length;
+
+  safeText(el.status, `Omens readable. (Strict English: ${before} → ${after})`);
+  safeText(el.sample, `Sample: ${after} headlines`);
   safeText(el.updated, `Updated: ${nowStamp()}`);
-  safeText(el.sample, `Sample: ${usable.length} headlines`);
-  safeText(el.filterPill, "Filter: English ONLY / Global");
-  safeText(el.okPill, "OK");
+  safeText(el.ver, VERSION);
 
-  const catTotals = {};
-  for (const c of CATS) catTotals[c.key] = 0;
-
-  const driverCounts = {};
-
-  for (const a of usable) {
-    const scores = scoreHeadline(a.title);
-    for (const c of CATS) {
-      catTotals[c.key] = Math.min(CATEGORY_MAX, (catTotals[c.key] || 0) + Math.min(6, scores[c.key] || 0));
+  // If nothing, render empty state
+  if (!after) {
+    const doom = 0;
+    const meta = labelForDoom(doom);
+    safeText(el.doomNum, doom);
+    safeText(el.doomLabel, meta.label);
+    safeText(el.doomTag, meta.tag);
+    if (el.doomFill) {
+      el.doomFill.className = `fill ${colorClassForDoom(doom)}`;
+      el.doomFill.style.width = "2px";
     }
+    renderBreakdown(Object.fromEntries(CATS.map(c => [c.key, 0])));
+    renderDrivers([]);
+    renderStories([]);
+    return;
+  }
 
-    const t = String(a.title || "").toLowerCase();
+  // Score & aggregate
+  const catTotals = Object.fromEntries(CATS.map(c => [c.key, 0]));
+  const driverCounts = new Map();
+
+  let totalPerArticle = 0;
+
+  for (const a of strictEnglish) {
+    const title = a.title || "";
+    const s = scoreHeadline(title);
+
+    // category totals
+    let per = 0;
     for (const c of CATS) {
+      catTotals[c.key] += s[c.key];
+      per += s[c.key];
+      // driver tokens: count keywords that matched
       for (const kw of c.keywords) {
-        if (t.includes(kw)) driverCounts[kw] = (driverCounts[kw] || 0) + 1;
+        if (title.toLowerCase().includes(kw)) {
+          driverCounts.set(kw, (driverCounts.get(kw) || 0) + 1);
+        }
       }
     }
+    // cap per article so one headline doesn't explode doom
+    per = Math.min(per, CATEGORY_MAX);
+    totalPerArticle += per;
   }
 
-  const doom = doomFromCategoryScores(catTotals);
-  const label = doomLabelFor(doom);
+  // Convert to 0–100 doom index
+  const avg = totalPerArticle / strictEnglish.length;         // 0..CATEGORY_MAX
+  const doom = Math.max(0, Math.min(100, Math.round((avg / CATEGORY_MAX) * 100)));
 
+  const meta = labelForDoom(doom);
   safeText(el.doomNum, doom);
-  safeText(el.doomLabel, label.label);
-  safeText(el.doomTag, label.tag);
+  safeText(el.doomLabel, meta.label);
+  safeText(el.doomTag, meta.tag);
 
-  const doomPct = Math.max(0, Math.min(100, doom));
-  const klass = barClass(doomPct);
   if (el.doomFill) {
-    el.doomFill.className = `fill ${klass}`;
-    el.doomFill.style.width = `${doomPct}%`;
+    el.doomFill.className = `fill ${colorClassForDoom(doom)}`;
+    el.doomFill.style.width = `${Math.max(2, doom)}%`;
   }
 
+  // Render breakdown
   renderBreakdown(catTotals);
-  renderDrivers(driverCounts);
-  renderStories(usable);
 
-  safeText(el.ver, VERSION);
+  // Top drivers
+  const topDrivers = [...driverCounts.entries()]
+    .sort((a,b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([kw]) => kw);
+
+  renderDrivers(topDrivers);
+
+  // Stories
+  renderStories(strictEnglish);
 }
 
-function wire() {
+function wireUI() {
+  if (el.refresh) el.refresh.addEventListener("click", run);
+}
+
+// Init
+(function init() {
+  wireUI();
   wireAbout();
-  if (el.refresh) el.refresh.addEventListener("click", () => run().catch(e => showFatal("run()", e)));
-}
-
-// Boot
-document.addEventListener("DOMContentLoaded", () => {
-  try {
-    wire();
-    run().catch(e => showFatal("run()", e));
-  } catch (e) {
-    showFatal("boot", e);
-  }
-});
+  safeText(el.ver, VERSION);
+  run();
+})();
