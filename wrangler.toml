@@ -1,0 +1,6 @@
+name = "doom-proxy"
+main = "worker.js"
+compatibility_date = "2026-06-04"
+
+# This Worker intentionally uses the default Cloudflare Cache API.
+# No KV/D1/R2 bindings required.
