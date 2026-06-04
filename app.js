@@ -6,7 +6,7 @@
  *  - Pill shows Strict English before→after
  */
 
-const VERSION = "v3.3.0";
+const VERSION = "v3.4.7-local";
 
 // Your worker
 const PROXY_BASE = "https://doom-proxy.toddkirschman.workers.dev";
@@ -14,25 +14,36 @@ const ROUTE = "gdelt";
 
 // Content knobs
 const DEFAULT_QUERY = "world";
-const MAX_RECORDS = 160;   // fetch more so English filter has room
+const MAX_RECORDS = 25;    // tiny, polite pulls; this joke app only needs a few omens
 const TIMESSPAN = "7d";
 
 // Doom categories
 const CATEGORY_MAX = 30;
 const CATS = [
-  { key: "conflict",  label: "Conflict Heat",     keywords: ["war","attack","missile","drone","strike","invasion","ceasefire","shelling","hostage","terror","bomb","blast"] },
-  { key: "climate",   label: "Climate Weirdness", keywords: ["heat","wildfire","flood","hurricane","cyclone","storm","drought","evacuation","tornado","smoke","record heat","blaze"] },
-  { key: "economy",   label: "Economic Drama",    keywords: ["inflation","layoff","crash","default","debt","tariff","shutdown","market","bank","recession","strike"] },
-  { key: "democracy", label: "Democracy Melting", keywords: ["election","coup","protest","riot","authoritarian","fraud","ban","court","impeach","corruption","arrested","martial law"] },
-  { key: "cyber",     label: "Cyber Chaos",       keywords: ["hack","breach","ransomware","outage","leak","cyber","malware","phishing","ddos"] },
-  { key: "nuclear",   label: "Uranium",           keywords: ["nuclear","uranium","warhead","enrichment","icbm","radiation","reactor"] },
-  { key: "space",     label: "Space Rocks",       keywords: ["asteroid","meteor","comet","space debris","nasa","impact","near-earth"] },
-  { key: "misc",      label: "Misc. Chaos",       keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] },
+  { key: "conflict",  icon: "⚔️", label: "Conflict Heat",     keywords: ["war","attack","missile","drone","strike","invasion","ceasefire","shelling","hostage","terror","bomb","blast"] },
+  { key: "climate",   icon: "🌪️", label: "Climate Weirdness", keywords: ["heat","wildfire","flood","hurricane","cyclone","storm","drought","evacuation","tornado","smoke","record heat","blaze"] },
+  { key: "economy",   icon: "📉", label: "Economic Drama",    keywords: ["inflation","layoff","crash","default","debt","tariff","shutdown","market","bank","recession","strike"] },
+  { key: "democracy", icon: "🏛️", label: "Democracy Melting", keywords: ["election","coup","protest","riot","authoritarian","fraud","ban","court","impeach","corruption","arrested","martial law"] },
+  { key: "cyber",     icon: "👾", label: "Cyber Gremlins",     keywords: ["hack","breach","ransomware","outage","leak","cyber","malware","phishing","ddos"] },
+  { key: "nuclear",   icon: "☢️", label: "Uranium Mood Ring", keywords: ["nuclear","uranium","warhead","enrichment","icbm","radiation","reactor"] },
+  { key: "space",     icon: "☄️", label: "Space Rocks",       keywords: ["asteroid","meteor","comet","space debris","nasa","impact","near-earth"] },
+  { key: "misc",      icon: "🫠", label: "Misc. Chaos",       keywords: ["panic","crisis","emergency","collapse","killed","dead","explosion","chaos","scandal"] },
 ];
 
 // Default query (works well with the worker)
 const DEFAULT_Q =
-  "war OR attack OR missile OR drone OR nuclear OR election OR protest OR coup OR inflation OR layoff OR ransomware OR breach OR wildfire OR flood OR hurricane";
+  "(war OR attack OR missile OR drone OR nuclear OR election OR protest OR coup OR inflation OR layoff OR ransomware OR breach OR wildfire OR flood OR hurricane)";
+
+const DEMO_ARTICLES = [
+  { title: "NASA tracks near-earth asteroid as officials say impact risk remains low", url: "#demo-space-rocks", domain: "demo.doomroom", language: "English", sourcecountry: "US" },
+  { title: "Nuclear talks resume after missile attack raises war fears", url: "#demo-uranium", domain: "demo.doomroom", language: "English", sourcecountry: "GB" },
+  { title: "Wildfire smoke spreads over cities as heat warnings expand", url: "#demo-climate", domain: "demo.doomroom", language: "English", sourcecountry: "CA" },
+  { title: "Ransomware attack causes hospital outage and data breach concerns", url: "#demo-cyber", domain: "demo.doomroom", language: "English", sourcecountry: "US" },
+  { title: "Election court ruling sparks protest as corruption claims grow", url: "#demo-democracy", domain: "demo.doomroom", language: "English", sourcecountry: "AU" },
+  { title: "Markets slide after inflation report and bank debt worries", url: "#demo-economy", domain: "demo.doomroom", language: "English", sourcecountry: "US" },
+  { title: "Meteor shower delights skywatchers because space rocks can be wholesome actually", url: "#demo-wholesome-rocks", domain: "demo.doomroom", language: "English", sourcecountry: "NZ" },
+  { title: "Drone strike and ceasefire talks dominate world briefing", url: "#demo-conflict", domain: "demo.doomroom", language: "English", sourcecountry: "IE" }
+];
 
 // ---------- DOM helpers ----------
 const $ = (id) => document.getElementById(id);
@@ -117,13 +128,15 @@ const EN_COMMON_WORDS =
   /\b(the|and|of|to|in|for|on|with|as|by|from|at|after|before|over|under|into|out|about|near|amid|says|say|warns|new|plan|plans|report|reports|deal|talks|vote|war|attack|strike|missile|drone|election|court|police|government|minister|crisis)\b/gi;
 
 // Non-English Latin “tripwire” words (Portuguese/Spanish/Indonesian/etc)
-const NON_EN_TRIPWIRE = /\b(
-  da|de|do|dos|das|uma|um|ao|aos|na|nas|no|nos|para|por|porque|entre|contra|sobre|mais|menos|tambem|entao|sao|foi|ser|tem|
-  que|seu|sua|seus|suas|mundo|melhor|assassinad[ao]|denuncia|delegad[oa]|
-  yang|dan|di|ke|dari|untuk|pada|ini|itu|atau|kami|kamu|mereka|bisa|siap|ajukan|diri|sebagai|tuan|rumah|piala|dunia|batal|begini|kata|pakar|
-  el|la|los|las|una|un|del|al|por|para|con|como|pero|porque|mundo|
-  le|la|les|des|une|un|du|au|aux|pour|avec|dans|sur
-)\b/ix;
+// JavaScript regexes do not support /x free-spacing mode, so keep this readable as data.
+const NON_EN_TRIPWIRE_WORDS = [
+  "da", "de", "do", "dos", "das", "uma", "um", "ao", "aos", "na", "nas", "no", "nos", "para", "por", "porque", "entre", "contra", "sobre", "mais", "menos", "tambem", "entao", "sao", "foi", "ser", "tem",
+  "que", "seu", "sua", "seus", "suas", "mundo", "melhor", "denuncia",
+  "yang", "dan", "di", "ke", "dari", "untuk", "pada", "ini", "itu", "atau", "kami", "kamu", "mereka", "bisa", "siap", "ajukan", "diri", "sebagai", "tuan", "rumah", "piala", "dunia", "batal", "begini", "kata", "pakar",
+  "el", "la", "los", "las", "una", "un", "del", "al", "con", "como", "pero",
+  "le", "les", "des", "une", "du", "au", "aux", "pour", "avec", "dans", "sur"
+];
+const NON_EN_TRIPWIRE = new RegExp(`\\b(${NON_EN_TRIPWIRE_WORDS.join("|")}|assassinad[ao]|delegad[oa])\\b`, "i");
 
 function asciiLetterRatio(s) {
   const letters = (s.match(/[A-Za-z]/g) || []).length;
@@ -174,12 +187,24 @@ function colorClassForDoom(n) {
 
 // Your 0–100 labels (kept)
 function labelForDoom(n) {
-  if (n <= 20) return { label: "We’re so back.", tag: "Things are calm. Suspiciously calm. Enjoy it while it lasts." };
-  if (n <= 40) return { label: "Mildly cursed timeline.", tag: "Nothing is technically broken, but the vibes are off." };
-  if (n <= 60) return { label: "This is why aliens don’t visit.", tag: "Patterns are emerging. None of them are flattering to humanity." };
-  if (n <= 80) return { label: "Please fasten your seat belts.", tag: "Multiple systems are wobbling. Turbulence ahead." };
-  if (n <= 95) return { label: "Apocalypse-adjacent.", tag: "Not the end of the world, but it’s definitely in the waiting room." };
-  return { label: "Final Boss Week unlocked.", tag: "Everything is happening everywhere all at once. Do not check the news before bed." };
+  if (n <= 20) return { label: "We’re so back.", tag: "The apocalypse hit snooze. Suspicious, but we accept gifts." };
+  if (n <= 40) return { label: "Mildly cursed timeline.", tag: "The vibes are wearing one sock and calling it fashion." };
+  if (n <= 60) return { label: "Aliens left us on read.", tag: "Humanity is doing group-project energy again." };
+  if (n <= 80) return { label: "Seatbelts, bestie.", tag: "Multiple systems are wobbling like a shopping cart with one cursed wheel." };
+  if (n <= 95) return { label: "Apocalypse-adjacent.", tag: "Not the end of the world, but the world is absolutely subtweeting us." };
+  return { label: "Final Boss Week unlocked.", tag: "Everything everywhere all at once, but somehow with worse patch notes." };
+}
+
+function scoreArticle(a) {
+  const scores = scoreHeadline(a?.title || "");
+  return Math.min(CATEGORY_MAX, Object.values(scores).reduce((sum, v) => sum + v, 0));
+}
+
+function severityForScore(score) {
+  if (score >= 18) return "unhinged";
+  if (score >= 10) return "spicy";
+  if (score >= 4) return "sus";
+  return "meh";
 }
 
 // ---------- Render helpers ----------
@@ -192,10 +217,10 @@ function renderBreakdown(catTotals) {
     const pct = Math.max(0, Math.min(100, Math.round((v / maxVal) * 100)));
     const cls = v >= 70 ? "fire" : v >= 40 ? "red" : v >= 20 ? "yellow" : "green";
     return `
-      <div class="breakItem">
+      <div class="breakItem ${cls}">
         <div class="breakTop">
-          <div>${escapeHtml(c.label)}</div>
-          <div class="muted">${v}</div>
+          <div class="breakName"><span class="catIcon" aria-hidden="true">${escapeHtml(c.icon || "◇")}</span><span>${escapeHtml(c.label)}</span></div>
+          <div class="breakScore">${v}</div>
         </div>
         <div class="breakBar"><div class="fill ${cls}" style="width:${pct}%"></div></div>
       </div>
@@ -228,10 +253,16 @@ function renderStories(articles) {
     const dom = a.domain || "";
     const lang = a.language || "";
     const cc = a.sourcecountry || "";
+    const articleScore = scoreArticle(a);
+    const severity = severityForScore(articleScore);
     return `
-      <a class="story" href="${escapeHtml(url)}" target="_blank" rel="noopener">
+      <a class="story ${severity}" href="${escapeHtml(url)}" target="_blank" rel="noopener">
+        <div class="storyKicker">
+          <span class="storyBadge">${escapeHtml(severity.toUpperCase())}</span>
+          <span class="storyScore">+${articleScore} doom</span>
+        </div>
         <div class="storyTitle">${escapeHtml(title)}</div>
-        <div class="storyMeta">${escapeHtml(dom)}${lang ? " • " + escapeHtml(lang) : ""}${cc ? " • " + escapeHtml(cc) : ""}</div>
+        <div class="storyMeta">${escapeHtml(dom || "unknown source")}${lang ? " • " + escapeHtml(lang) : ""}${cc ? " • " + escapeHtml(cc) : ""}</div>
       </a>
     `;
   }).join("");
@@ -240,6 +271,37 @@ function renderStories(articles) {
 }
 
 // ---------- Fetch ----------
+function formatCooldown(seconds) {
+  const secs = Math.max(1, Number(seconds || 0));
+  const mins = Math.ceil(secs / 60);
+  return mins <= 1 ? "about 1 minute" : `about ${mins} minutes`;
+}
+
+function friendlyWorkerError(data) {
+  const cooldown = formatCooldown(data?.failureCooldownRemainingSeconds || data?.retryAfterSeconds || data?.failureCooldownSeconds);
+  const preview = String(data?.preview || data?.livePreview || "").trim();
+
+  if (data?.errorCode === "GDELT_RATE_LIMIT" || data?.status === 429) {
+    return `GDELT rate limit active. The news API is saying “too many requests,” so Doomroom is pausing live pulls for ${cooldown} instead of hammering it. Details from GDELT: ${preview || "HTTP 429 Too Many Requests."}`;
+  }
+
+  if (data?.errorCode === "GDELT_QUERY_SYNTAX") {
+    return `GDELT query syntax issue. The upstream API rejected the search format: ${preview || "OR terms must be wrapped in parentheses."} Doomroom has been updated to wrap OR searches properly; this failed query is cooling down for ${cooldown}.`;
+  }
+
+  if (data?.errorCode === "GDELT_TIMEOUT") {
+    return `GDELT upstream timeout. The news API did not answer quickly enough, so Doomroom is pausing live pulls for ${cooldown} instead of spinning forever or retrying in a loop.`;
+  }
+
+  if (data?.cacheStatus === "FAILURE_COOLDOWN" || data?.cacheStatus === "MISS_LIVE_FAILED_COOLDOWN") {
+    return `${data?.error || "Live news pull failed"}. Doomroom is in upstream cooldown for ${cooldown}. ${data?.userMessage || "This prevents repeated retries while the upstream API is unhappy."}`;
+  }
+
+  if (data?.userMessage) return data.userMessage;
+  if (data?.error) return `${data.error}${preview ? ` — ${preview}` : ""}`;
+  return "Worker returned no usable data";
+}
+
 async function fetchGdelt(query) {
   const u = new URL(`${PROXY_BASE}/${ROUTE}`);
   u.searchParams.set("format", "json");
@@ -248,63 +310,89 @@ async function fetchGdelt(query) {
   u.searchParams.set("timespan", TIMESSPAN);
   u.searchParams.set("query", query || DEFAULT_Q);
 
-  // tiny cache-buster
+  // tiny cache-buster; Worker ignores this for its normalized cache keys
   u.searchParams.set("_", String(Date.now()));
 
   const resp = await fetch(u.toString(), { method: "GET" });
+  if (!resp.ok) throw new Error(`Worker HTTP ${resp.status}`);
   const data = await resp.json();
+  if (data && data.ok === false) throw new Error(friendlyWorkerError(data));
   return data;
 }
 
-// ---------- Main run ----------
-async function run() {
-  safeText(el.updated, "Updated: —");
-  safeText(el.status, "Loading…");
-  safeText(el.sample, "Sample: —");
-  safeText(el.ver, VERSION);
-  safeText(el.filterPill, "Filter: English ONLY / Global");
-  if (el.okPill) el.okPill.textContent = "OK";
+let lastFetchAt = 0;
+const MIN_REFRESH_MS = 6500;
+const CACHE_KEY = "doomroom:last-readable-omens:v1";
+const LIVE_REFRESH_MS = 8 * 60 * 60 * 1000; // 3 polite live pulls/day max per device
 
-  // Clear old content
-  if (el.breakdown) safeHtml(el.breakdown, "");
-  if (el.drivers) safeHtml(el.drivers, "");
-  if (el.stories) safeHtml(el.stories, "");
+function cacheAgeMs(cached) {
+  return Math.max(0, Date.now() - Number(cached?.savedAt || 0));
+}
 
-  // Skeleton values
-  safeText(el.doomNum, "—");
-  safeText(el.doomLabel, "—");
-  safeText(el.doomTag, "—");
-  if (el.doomFill) el.doomFill.style.width = "0%";
+function isCacheFresh(cached) {
+  return Boolean(cached?.articles?.length) && cacheAgeMs(cached) < LIVE_REFRESH_MS;
+}
 
-  let data;
+function formatDuration(ms) {
+  const mins = Math.max(1, Math.ceil(Math.max(0, ms) / 60000));
+  if (mins < 60) return `${mins}m`;
+  const hours = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem ? `${hours}h ${rem}m` : `${hours}h`;
+}
+
+function nextLivePullIn(cached) {
+  return formatDuration(LIVE_REFRESH_MS - cacheAgeMs(cached));
+}
+
+function setRefreshLoading(isLoading) {
+  if (!el.refresh) return;
+  el.refresh.disabled = Boolean(isLoading);
+  el.refresh.textContent = isLoading ? "Scanning omens…" : "Refresh";
+}
+
+function loadCachedOmens() {
   try {
-    data = await fetchGdelt(DEFAULT_Q);
-  } catch (e) {
-    safeText(el.status, "Fetch failed.");
-    safeText(el.updated, `Updated: ${nowStamp()}`);
-    return;
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const cached = JSON.parse(raw);
+    if (!cached || !Array.isArray(cached.articles)) return null;
+    return cached;
+  } catch {
+    return null;
   }
+}
 
-  const articles = Array.isArray(data?.articles) ? data.articles : [];
-  const before = articles.length;
+function saveCachedOmens(articles) {
+  try {
+    const trimmed = articles.slice(0, 25).map((a) => ({
+      title: a.title || "",
+      url: a.url || "#",
+      domain: a.domain || "",
+      language: a.language || "",
+      sourcecountry: a.sourcecountry || ""
+    }));
+    localStorage.setItem(CACHE_KEY, JSON.stringify({ savedAt: Date.now(), articles: trimmed }));
+  } catch {
+    // Cache is a nicety; never let storage weirdness break the doom desk.
+  }
+}
 
-  // ✅ Strict English filtering by TITLE (not by a.language)
-  let strictEnglish = articles.filter(a => isStrictEnglishTitle(a?.title));
+function formatCacheAge(savedAt) {
+  const ms = Math.max(0, Date.now() - Number(savedAt || 0));
+  const mins = Math.max(1, Math.round(ms / 60000));
+  if (mins < 60) return `${mins}m old`;
+  return `${Math.round(mins / 60)}h old`;
+}
 
-  // de-dupe by title
-  const seen = new Set();
-  strictEnglish = strictEnglish.filter(a => {
-    const key = String(a?.title || "").trim().toLowerCase();
-    if (!key || seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-
+function renderHeadlineSet(strictEnglish, options = {}) {
+  const before = Number.isFinite(options.before) ? options.before : strictEnglish.length;
   const after = strictEnglish.length;
+  const statusText = options.statusText || `Omens readable. (Strict English: ${before} → ${after})`;
 
-  safeText(el.status, `Omens readable. (Strict English: ${before} → ${after})`);
-  safeText(el.sample, `Sample: ${after} headlines`);
-  safeText(el.updated, `Updated: ${nowStamp()}`);
+  safeText(el.status, statusText);
+  safeText(el.sample, options.sampleText || `Sample: ${after} headlines`);
+  safeText(el.updated, options.updatedText || `Updated: ${nowStamp()}`);
   safeText(el.ver, VERSION);
 
   // If nothing, render empty state
@@ -357,8 +445,8 @@ async function run() {
 
   const meta = labelForDoom(doom);
   safeText(el.doomNum, doom);
-  safeText(el.doomLabel, meta.label);
-  safeText(el.doomTag, meta.tag);
+  safeText(el.doomLabel, options.label || meta.label);
+  safeText(el.doomTag, options.tag || meta.tag);
 
   if (el.doomFill) {
     el.doomFill.className = `fill ${colorClassForDoom(doom)}`;
@@ -378,6 +466,126 @@ async function run() {
 
   // Stories
   renderStories(strictEnglish);
+}
+
+// ---------- Main run ----------
+async function run() {
+  const params = new URLSearchParams(location.search);
+  const demoMode = params.get("demo") === "1";
+  if (demoMode) {
+    setRefreshLoading(true);
+    safeText(el.updated, "Updated: —");
+    safeText(el.status, "Loading demo omens…");
+    safeText(el.sample, "Sample: —");
+    safeText(el.ver, VERSION);
+    safeText(el.filterPill, "Filter: DEMO MODE / English-style sample");
+    if (el.okPill) el.okPill.textContent = "DEMO";
+    setTimeout(() => {
+      renderHeadlineSet(DEMO_ARTICLES, {
+        before: DEMO_ARTICLES.length,
+        statusText: "Demo omens loaded. Real API is currently rate-limiting upstream.",
+        sampleText: `Demo sample: ${DEMO_ARTICLES.length} headlines`,
+        updatedText: `Updated: demo ${nowStamp()}`,
+        label: "Demo doom, fully weaponized.",
+        tag: "This is the populated app flow with sample headlines while GDELT takes a dramatic little timeout."
+      });
+      setRefreshLoading(false);
+    }, 450);
+    return;
+  }
+
+  const cached = loadCachedOmens();
+  if (isCacheFresh(cached)) {
+    safeText(el.filterPill, "Filter: English ONLY / Cached briefing");
+    if (el.okPill) el.okPill.textContent = "NAP MODE";
+    renderHeadlineSet(cached.articles, {
+      statusText: `Cached omens are fresh enough. Next live pull in ${nextLivePullIn(cached)}.`,
+      sampleText: `Cached sample: ${cached.articles.length} headlines`,
+      updatedText: `Updated: cached ${formatCacheAge(cached.savedAt)}`,
+      label: "Doom clock is napping.",
+      tag: "This app is unserious, so it refuses to bully the news API. Tap back later for a fresh batch of nonsense."
+    });
+    setRefreshLoading(false);
+    return;
+  }
+
+  const since = Date.now() - lastFetchAt;
+  if (since < MIN_REFRESH_MS) {
+    const wait = Math.ceil((MIN_REFRESH_MS - since) / 1000);
+    safeText(el.status, `Cooling the doom engine. Retry in ${wait}s.`);
+    return;
+  }
+  lastFetchAt = Date.now();
+  setRefreshLoading(true);
+  safeText(el.updated, "Updated: —");
+  safeText(el.status, "Checking the twice-daily-ish omen bucket…");
+  safeText(el.sample, "Sample: —");
+  safeText(el.ver, VERSION);
+  safeText(el.filterPill, "Filter: English ONLY / Global");
+  if (el.okPill) el.okPill.textContent = "OK";
+
+  // Clear old content
+  if (el.breakdown) safeHtml(el.breakdown, "");
+  if (el.drivers) safeHtml(el.drivers, "");
+  if (el.stories) safeHtml(el.stories, "");
+
+  // Skeleton values
+  safeText(el.doomNum, "—");
+  safeText(el.doomLabel, "—");
+  safeText(el.doomTag, "—");
+  if (el.doomFill) el.doomFill.style.width = "0%";
+
+  let data;
+  try {
+    data = await fetchGdelt(DEFAULT_Q);
+  } catch (e) {
+    const cached = loadCachedOmens();
+    if (cached?.articles?.length) {
+      renderHeadlineSet(cached.articles, {
+        statusText: `Live fetch failed; showing cached omens (${formatCacheAge(cached.savedAt)}). ${e?.message || ""}`,
+        sampleText: `Cached sample: ${cached.articles.length} headlines`,
+        updatedText: `Updated: cached ${formatCacheAge(cached.savedAt)}`,
+        label: "Cached doom, fresh sarcasm.",
+        tag: `Live news pipe said “${e?.message || "nope"}.” So here are the last readable omens instead of a sad blank screen.`
+      });
+      setRefreshLoading(false);
+      return;
+    }
+
+    safeText(el.filterPill, "Filter: SAMPLE FALLBACK / Live pipe napping");
+    if (el.okPill) el.okPill.textContent = "SAMPLE";
+    renderHeadlineSet(DEMO_ARTICLES, {
+      before: DEMO_ARTICLES.length,
+      statusText: `Live pull paused: ${e?.message || "omen pipe clogged"} Showing sample omens.`,
+      sampleText: `Sample fallback: ${DEMO_ARTICLES.length} headlines`,
+      updatedText: `Updated: sample ${nowStamp()}`,
+      label: "Sample doom, fully theatrical.",
+      tag: "GDELT is taking a dramatic little timeout, so Doomroom is showing a clearly fake-but-functional briefing instead of sitting here looking unemployed."
+    });
+    setRefreshLoading(false);
+    return;
+  }
+
+  const articles = Array.isArray(data?.articles) ? data.articles : [];
+  const before = articles.length;
+
+  // ✅ Strict English filtering by TITLE (not by a.language)
+  let strictEnglish = articles.filter(a => isStrictEnglishTitle(a?.title));
+
+  // de-dupe by title
+  const seen = new Set();
+  strictEnglish = strictEnglish.filter(a => {
+    const key = String(a?.title || "").trim().toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  const after = strictEnglish.length;
+
+  if (after) saveCachedOmens(strictEnglish);
+  renderHeadlineSet(strictEnglish, { before });
+  setRefreshLoading(false);
 }
 
 function wireUI() {

@@ -2,8 +2,11 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <meta name="theme-color" content="#0b0f17" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#090b16" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Doomroom" />
 
   <title>Doomroom News</title>
 
@@ -13,20 +16,25 @@
   <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
 
   <!-- IMPORTANT: cache-bust CSS -->
-  <link id="cssLink" rel="stylesheet" href="./styles.css?v=INDEX_330" />
+  <link id="cssLink" rel="stylesheet" href="./styles.css?v=INDEX_347" />
 </head>
 
 <body>
   <div id="app" class="page">
     <div class="wrap">
       <div class="top">
-        <div class="eyebrow">GLOBAL BRIEFING</div>
+        <div class="arcadeChrome" aria-hidden="true">
+          <span class="pixelSprite earth"></span>
+          <span class="scanlineLabel">LIVE DOOM TELEMETRY</span>
+          <span class="pixelSprite comet"></span>
+        </div>
+        <div class="eyebrow">GLOBAL BRIEFING // ACTUAL NEWS, QUESTIONABLE SCIENCE</div>
         <h1>Doomroom News</h1>
-        <div class="sub">Doom Index (Highly Scientific)</div>
+        <div class="sub">A tiny 16-bit apocalypse desk for dramatic headlines, space rocks, and other premium nonsense.</div>
 
-        <div class="row">
-          <button id="btnRefresh" type="button">Refresh</button>
-          <button id="btnAbout" type="button">About</button>
+        <div class="row controlDeck">
+          <button id="btnRefresh" type="button" aria-label="Refresh doom headlines">Refresh</button>
+          <button id="btnAbout" type="button" aria-label="About Doomroom News">About</button>
           <div id="statusPill" class="pill muted">Loading…</div>
           <div id="updatedPill" class="pill muted">Updated: —</div>
         </div>
@@ -38,7 +46,8 @@
         </div>
       </div>
 
-      <div class="card">
+      <div class="card doomCard">
+        <div class="cabinetBadge" aria-hidden="true">INSERT COIN TO REFRESH REALITY</div>
         <div class="doomHeader">
           <div class="bigNum" id="doomNum">—</div>
           <div class="doomRight">
@@ -84,7 +93,7 @@
     <div class="overlayCard">
       <div class="overlayTitle">☄️ Doomroom News</div>
       <div class="overlaySub muted">
-        <span id="aboutVersion">v—</span> • DoomWorks Interstellar • DoomWorks Interstellar
+        <span id="aboutVersion">v—</span> • DoomWorks Interstellar • Everything Is Fine, LLC
       </div>
 
       <p>
@@ -107,7 +116,7 @@
   <script>
     // ---- Version string used to bust browser cache for app.js/styles.css ----
     // Change this value whenever you want to force-refresh everything.
-    const BUILD = "INDEX_330";
+    const BUILD = "INDEX_347";
 
     // Update CSS href with build value (in case browser cached the HTML)
     (function () {
@@ -142,7 +151,7 @@
   </script>
 
   <!-- IMPORTANT: load app.js with cache-busting -->
-  <script src="./app.js?v=INDEX_330" defer></script>
+  <script src="./app.js?v=INDEX_347" defer></script>
 
 </body>
 </html>
